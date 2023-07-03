@@ -25,7 +25,7 @@ class GraphConvolution(Module):
         input = F.dropout(input, self.dropout, self.training)
         support = torch.mm(input, self.weight)
         output = torch.spmm(adj, support)
-        output = self.act(output)
+        output = self.act(output) # relu
         return output
 
     def __repr__(self):
