@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch_geometric as pyg
 from gae.layers import GraphConvolution
 
 
@@ -31,15 +31,39 @@ class GCNModelVAE(nn.Module):
         return self.dc(z), mu, logvar
 
 
+class LinearClassifier(nn.Module):
+    """ classifier that takes decoder output and makes multi label classification on edges """
+
+    def __init__(self, hidden_dim, dropout, num_classes):
+        super(LinearClassifier, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.dropout = dropout
+        self.layers = torch.nn.ModuleList()
+        self.layers.append(pyg.nn.Linear(-1, self.hidden_dim, bias=True))
+        self.layers.append(pyg.nn.Linear(self.hidden_dim, self.hidden_dim, bias=True))
+        self.layers.append(pyg.nn.Linear(self.hidden_dim, num_classes, bias=True))
+
+    def forward(self, z):
+        for _, layer in enumerate(self.layers[:-1]):
+            z = F.relu(layer(z))
+            z = F.dropout(z, self.dropout)
+        z = self.layers[-1](z)
+        return z
+
+
 class InnerProductDecoder(nn.Module):
     """Decoder for using inner product for prediction."""
 
-    def __init__(self, dropout, act=torch.sigmoid):
+    def __init__(self, dropout, num_classes=10, act=torch.sigmoid):
         super(InnerProductDecoder, self).__init__()
         self.dropout = dropout
         self.act = act
+        self.num_classes = num_classes
+        self.classifier = LinearClassifier(hidden_dim=128, dropout=0.5, num_classes=self.num_classes)
 
     def forward(self, z):
         z = F.dropout(z, self.dropout, training=self.training)
         adj = self.act(torch.mm(z, z.t()))
-        return adj
+        adj_3D = adj.unsqueeze(2).repeat(1, 1, self.num_classes)
+        a_hat = self.classifier(adj_3D)
+        return F.sigmoid(a_hat)
