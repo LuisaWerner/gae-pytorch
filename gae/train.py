@@ -56,7 +56,7 @@ def gae_for(args):
         t = time.time()
         model.train()
         optimizer.zero_grad()
-        recovered, mu, logvar = model(features, adj_norm)
+        recovered, mu, logvar = model(features, adj_norm) # recovered is predicted adjacency matrix from decoder
         loss = loss_function(preds=recovered, labels=adj_label,
                              mu=mu, logvar=logvar, n_nodes=n_nodes,
                              norm=norm, pos_weight=pos_weight)

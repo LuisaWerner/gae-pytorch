@@ -20,7 +20,7 @@ class GCNModelVAE(nn.Module):
     def reparameterize(self, mu, logvar):
         if self.training:
             std = torch.exp(logvar)
-            eps = torch.randn_like(std)
+            eps = torch.randn_like(std) # random numbers of std's shape with mean 0 and variance 1
             return eps.mul(std).add_(mu)
         else:
             return mu
@@ -62,7 +62,7 @@ class InnerProductDecoder(nn.Module):
         self.classifier = LinearClassifier(hidden_dim=128, dropout=0.5, num_classes=self.num_classes)
 
     def forward(self, z):
-        z = F.dropout(z, self.dropout, training=self.training)
+        z = F.dropout(z, self.dropout, training=self.training) # why dropout in decoder?
         adj = self.act(torch.mm(z, z.t()))
         adj_3D = adj.unsqueeze(2).repeat(1, 1, self.num_classes)
         a_hat = self.classifier(adj_3D)
