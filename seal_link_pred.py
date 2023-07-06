@@ -18,6 +18,11 @@ from torch_geometric.utils import k_hop_subgraph, to_scipy_sparse_matrix
 
 
 class SEALDataset(InMemoryDataset):
+    """
+    Note InMemoryDataset: once created, the data objects are saved in PycharmProjects/Data/Planetoid
+    with names SEAL_train_data.pt and so on. To re-pass through the preprocessing functions, data directory
+    has to be deleted there
+    """
     def __init__(self, dataset, num_hops, split='train'):
         self.data = dataset[0]
         self.num_hops = num_hops
@@ -69,6 +74,8 @@ class SEALDataset(InMemoryDataset):
     def extract_enclosing_subgraphs(self, edge_index, edge_label_index, y):
         data_list = []
         for src, dst in edge_label_index.t().tolist():
+            # compute the induced subgraph of sub edge index around all nodes in sub nodes reachable within num hops.
+            # gets the neighborhood of source and destination
             sub_nodes, sub_edge_index, mapping, _ = k_hop_subgraph(
                 [src, dst], self.num_hops, edge_index, relabel_nodes=True)
             src, dst = mapping.tolist()
@@ -116,14 +123,14 @@ class SEALDataset(InMemoryDataset):
         z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1)
         z[src] = 1.
         z[dst] = 1.
-        z[torch.isnan(z)] = 0.
+        z[torch.isnan(z)] = 0. # for un reachable nodes, set them to infinity ? Is this done here?
 
         self._max_z = max(int(z.max()), self._max_z)
 
         return z.to(torch.long)
 
 
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Planetoid')
+path = osp.join(osp.dirname(osp.realpath(__file__)), '../..', 'data', 'Planetoid')
 dataset = Planetoid(path, name='Cora')
 
 train_dataset = SEALDataset(dataset, num_hops=2, split='train')
