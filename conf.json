@@ -1,0 +1,31 @@
+
+{
+    "configs": [
+         {
+    "adam_beta1": 0.9,
+    "adam_beta2": 0.99,
+    "adam_eps": 1e-07,
+    "epochs": 100,
+    "dropout": 0.5,
+    "es_enabled": false,
+    "es_min_delta": 0.001,
+    "es_patience": 10,
+    "eval_steps": 1,
+    "hidden_dim": 128,
+    "mps": false,
+    "learning_rate": 0.01,
+    "model": "GCNModelVAE",
+    "num_classes": 29,
+    "num_val": 0.2,
+    "num_test": 0.2,
+    "runs": 1,
+    "same_edge": [],
+    "seed": 1234,
+    "wandb_label": "label",
+    "wandb_entity": "entity",
+    "wandb_use": false,
+    "wandb_project": "project",
+    "weight_decay": 5e-4
+    }
+    ]
+  }
