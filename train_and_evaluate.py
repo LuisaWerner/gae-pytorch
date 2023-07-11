@@ -9,13 +9,13 @@ from logger import *
 from sklearn.metrics import classification_report
 
 
-def train(model, data, optimizer, device, criterion):
+def train(model, loader, optimizer, device, criterion):
     model.train()
     total_loss = 0
-    for i_batch, batch in enumerate(data):
+    for i_batch, batch in enumerate(loader):
         batch.to(device)
         optimizer.zero_grad()
-        out = model(batch.x, batch.adj)  # todo put corret activation ?
+        out = model(batch.x, batch.edge_index)  # todo put corret activation ?
         loss = criterion(out, batch.edge_type) # todo
         total_loss += float(loss.item())
 
@@ -24,10 +24,10 @@ def train(model, data, optimizer, device, criterion):
 
 
 @torch.no_grad()
-def test(model, data, criterion, device, evaluator):
+def test(model, loader, criterion, device, evaluator):
     model.eval()
     # test loade rshould include the whole dataset
-    for batch in data.test_loader:
+    for i, batch in enumerate(loader):
         batch .to(device)
         out = model(batch.x, batch.adj) # todo activation see above
 

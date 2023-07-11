@@ -2,8 +2,9 @@ import pickle
 import torch
 from torch_geometric.transforms import RandomLinkSplit
 from torch_geometric.transforms import BaseTransform
+from torch_geometric.utils import remove_isolated_nodes
 from torch_geometric.loader import LinkNeighborLoader
-from copy import copy
+from copy import deepcopy
 import torch_geometric
 
 from typing import List, Optional, Union
@@ -14,8 +15,32 @@ class SubgraphSampler(object):
     see https://pytorch-geometric.readthedocs.io/en/1.3.1/_modules/torch_geometric/data/sampler.html
     https: // pytorch - geometric.readthedocs.io / en / latest / _modules / torch_geometric / loader / dynamic_batch_sampler.html
     """
-    def __init__(self):
-        raise NotImplementedError
+    def __init__(self, data, batch_size):
+        self.batch_size = batch_size
+        self.data = data
+        self.current_index = 0
+        self.e_id_start = 0
+        self.num_batches = round(data.num_edges / self.batch_size)
+
+    def __iter__(self):
+        return self
+
+    def __len__(self):
+        return self.num_batches
+
+    def __next__(self):
+        if self.current_index <= self.num_batches:
+            batch = deepcopy(self.data)
+            filtered_edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start+self.batch_size]
+            filtered_edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
+            batch.edge_index, batch.edge_type, mask = remove_isolated_nodes(filtered_edge_index, filtered_edge_type, num_nodes=batch.num_nodes)
+            batch.x = batch.x[mask, :]
+            batch.y = batch.y[mask]
+            batch.num_nodes = sum(mask)
+            self.current_index += 1
+            self.e_id_start += self.batch_size
+            return batch
+        raise StopIteration
 
 
 class SplitRandomLinks(BaseTransform):
@@ -25,7 +50,7 @@ class SplitRandomLinks(BaseTransform):
 
     def __call__(self, data):
         """ create subgraphs of data with disjunct sets of edge index """
-        train_data, val_data, test_data = copy(data), copy(data), copy(data)
+        # train_data, val_data, test_data = deepcopy(data), deepcopy(data), deepcopy(data)
         num_edges = len(data.edge_index[1])
         num_val_edges = round(self.num_val * num_edges)
         num_test_edges = round(self.num_test * num_edges)
@@ -105,6 +130,7 @@ class WikiAlumniData:
         self.same_edge = args.same_edge
         self.num_val = args.num_val
         self.num_test = args.num_test
+        self.batch_size = args.batch_size
 
     def preprocess(self):
         try:
@@ -138,8 +164,8 @@ class WikiAlumniData:
         train_data, val_data, test_data = transform(data)
 
         # samplers for batch learning
-        # train_loader = SubgraphSampler(data, batch_size=128)
-        # todo split into batches ? write subgraph into list
-        # split edge index and then create iterable of subgraphs? 
+        train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
+        val_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
+        test_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
 
-        return data, train_data, val_data, test_data
+        return data, train_loader, val_loader, test_loader
