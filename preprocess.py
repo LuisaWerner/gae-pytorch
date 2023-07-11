@@ -3,8 +3,10 @@ import torch
 from torch_geometric.transforms import RandomLinkSplit
 from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import remove_isolated_nodes
+from torch.nn.functional import one_hot
 from torch_geometric.loader import LinkNeighborLoader
 from copy import deepcopy
+from torch_scatter import scatter
 import torch_geometric
 
 from typing import List, Optional, Union
@@ -37,6 +39,18 @@ class SubgraphSampler(object):
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
             batch.num_nodes = sum(mask)
+            batch.num_classes = self.data.num_classes
+
+            # todo question multi label: we should have duplicates in edge index with different values in edge type in multi data
+            # todo ground truth 3D tensor with edges types one hot encoded at edge_index (2D) position
+            """
+            edge_type_onehot = one_hot(batch.edge_type, num_classes=self.data.num_classes)
+            edge_type_truth = torch.zeros([batch.num_nodes, batch.num_nodes, self.data.num_classes], dtype=torch.int64)
+            for _, i in enumerate(torch.unbind(batch.edge_index, dim=1)):
+                edge_type_truth[i,:] = edge_type_onehot[_]
+            update = scatter(edge_type_truth, batch.edge_index, edge_type_onehot)
+            edge_type_truth.index_put(torch.unbind(batch.edge_index, dim=1), edge_type_onehot, accumulate=True)
+            """
             self.current_index += 1
             self.e_id_start += self.batch_size
             return batch
@@ -67,7 +81,6 @@ class SplitRandomLinks(BaseTransform):
         return train_data, val_data, test_data
 
 
-
 def get_data(args):
     """ returns data object """
     data = WikiAlumniData(args).preprocess()
@@ -83,7 +96,7 @@ def add_edge_common(data, edge_list):
     for i, edge_type_str in enumerate(edge_list):
 
         if edge_type_str in ["deathplace", "homeLocation", "hasOccupation", "nationality", "birthplace", "affiliation",
-                             "gender", "knowsLanguage", "memberOf"]:
+                             "gender", "knowsLanguage", "memberOf", "award"]:
             people = 0
             other = 1
         elif (edge_type_str in ["about", "actor", "author", "director", "character", "competitor", "composer",
@@ -120,7 +133,8 @@ def add_edge_common(data, edge_list):
 
         data.edge_type = torch.cat((data.edge_type, torch.full((pairs.size(0),), id_type_edge)))
         data.edge_index = torch.cat([data.edge_index, torch.transpose(pairs, 0, 1)], dim=1)
-        data.edge_weight = torch.cat([data.edge_weight, torch.ones_like(pairs[:, 0], dtype=torch.float32)])
+        if data.edge_weight is not None:
+            data.edge_weight = torch.cat([data.edge_weight, torch.ones_like(pairs[:, 0], dtype=torch.float32)])
     return data
 
 
@@ -131,6 +145,7 @@ class WikiAlumniData:
         self.num_val = args.num_val
         self.num_test = args.num_test
         self.batch_size = args.batch_size
+        self.num_classes = args.num_classes
 
     def preprocess(self):
         try:
@@ -141,6 +156,7 @@ class WikiAlumniData:
             data = None
 
         data.x = data.x.type(torch.float32)
+        data.num_classes = self.num_classes
 
         del data['tr_ent_idx']
         del data['val_ent_idx']
@@ -159,6 +175,7 @@ class WikiAlumniData:
                 edge_type_dict[k] = item
             data.edge_type_dict = edge_type_dict
             data = add_edge_common(data, self.same_edge)
+            # todo save wikialumni augmented to avoid to create the links again and again
 
         transform = SplitRandomLinks()
         train_data, val_data, test_data = transform(data)

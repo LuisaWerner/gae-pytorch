@@ -20,7 +20,7 @@
     "num_val": 0.2,
     "num_test": 0.2,
     "runs": 1,
-    "same_edge": [],
+    "same_edge": ["about", "actor", "affiliation", "author", "award", "birthplace","character", "competitor", "composer", "contributor", "creator", "deathplace", "director", "editor", "founder", "gender", "hasOccupation", "homeLocation", "knowsLanguage", "lyricist", "memberOf", "musicBy", "nationality", "producer", "publisher", "worksFor"],
     "seed": 1234,
     "wandb_label": "label",
     "wandb_entity": "entity",
