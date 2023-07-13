@@ -8,7 +8,7 @@ from torch_geometric.loader import LinkNeighborLoader
 from copy import deepcopy
 from torch_scatter import scatter
 import torch_geometric
-
+from pathlib import Path
 from typing import List, Optional, Union
 
 
@@ -87,55 +87,82 @@ def get_data(args):
     return data
 
 
-def add_edge_common(data, edge_list):
+def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented.pkl'):
     """
      Add new type of edge between two "people" nodes for knowing if they have a common third "other" node inn common.
      Each element of the pair of "people" node is linked with the same edge type on this third "other" node in common.
      A list variable is expected as list_edge input.
+     Remark: some edge types introduce MANY edges and the graph gets very large (see overview in documentation)
      """
-    for i, edge_type_str in enumerate(edge_list):
+    if path.exists():
+        file = open(path, 'rb')
+        data = pickle.load(file)
+        print('loaded file augmented ')
+        return data
 
-        if edge_type_str in ["deathplace", "homeLocation", "hasOccupation", "nationality", "birthplace", "affiliation",
-                             "gender", "knowsLanguage", "memberOf", "award"]:
-            people = 0
-            other = 1
-        elif (edge_type_str in ["about", "actor", "author", "director", "character", "competitor", "composer",
-                                "contributor", "creator", "editor", "founder", "lyricist", "musicBy", "producer",
-                                "publisher"]) or (type(edge_type_str) == list):
-            people = 1
-            other = 0
-        else:
-            raise ValueError('Edge type %s not found' % edge_type_str)
+    else:
+        print('Create wikialumni_augmented. This can take a while .... ')
+        edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
+                          'character', 'children', 'competitor', 'composer', 'contributor',
+                          'creator', 'deathplace', 'director', 'editor', 'founder', 'gender',
+                          'hasOccupation', 'homeLocation', 'knowsLanguage', 'lyricist', 'memberOf',
+                          'musicBy', 'nationality', 'parent', 'producer', 'publisher', 'spouse',
+                          'worksFor']
+        edge_type_dict = {}
+        for k, item in enumerate(edge_types_str):
+            edge_type_dict[k] = item
 
-        id_type_edge = len(data.edge_type_dict)
+        data.edge_type_dict = edge_type_dict
 
-        if isinstance(edge_type_str, str):
-            data.edge_type_dict[id_type_edge] = "same" + edge_type_str.capitalize()
-        elif isinstance(edge_type_str, list):
-            capitalized_strings = [s.capitalize() for s in edge_type_str]
-            data.edge_type_dict[id_type_edge] = "same" + "Or".join(capitalized_strings)
+        for i, edge_type_str in enumerate(edge_list):
 
-        edge_type = [i for i, et in enumerate(data.edge_type_dict.values()) if et in edge_type_str]
-        edge_type_index = torch.cat([(data.edge_type == t).nonzero(as_tuple=False).squeeze() for t in edge_type])
-        people_nodes = data.edge_index[people, edge_type_index]
-        other_nodes = data.edge_index[other, edge_type_index]
-        pairs = torch.empty(0, 2, dtype=torch.int)
-        for value in torch.unique(other_nodes):
-            indices = torch.where(other_nodes == value)[0]
-            corresponding_values = people_nodes[indices]
-
-            if corresponding_values.size(0) <= 1:
-                continue
+            if edge_type_str in ["deathplace", "homeLocation", "hasOccupation", "nationality", "birthplace", "affiliation",
+                                 "gender", "knowsLanguage", "memberOf", "award", "worksFor"]:
+                people = 0
+                other = 1
+            elif (edge_type_str in ["about", "actor", "author", "director", "character", "competitor", "composer",
+                                    "contributor", "creator", "editor", "founder", "lyricist", "musicBy", "producer",
+                                    "publisher"]) or (type(edge_type_str) == list):
+                people = 1
+                other = 0
             else:
-                nodes_pairs = torch.combinations(corresponding_values, 2)
-                pairs = torch.cat((pairs, nodes_pairs), dim=0)
-                pairs = torch.unique(pairs, dim=0)
+                raise ValueError('Edge type %s not found' % edge_type_str)
 
-        data.edge_type = torch.cat((data.edge_type, torch.full((pairs.size(0),), id_type_edge)))
-        data.edge_index = torch.cat([data.edge_index, torch.transpose(pairs, 0, 1)], dim=1)
-        if data.edge_weight is not None:
-            data.edge_weight = torch.cat([data.edge_weight, torch.ones_like(pairs[:, 0], dtype=torch.float32)])
-    return data
+            id_type_edge = len(data.edge_type_dict)
+
+            if isinstance(edge_type_str, str):
+                data.edge_type_dict[id_type_edge] = "same" + edge_type_str.capitalize()
+            elif isinstance(edge_type_str, list):
+                capitalized_strings = [s.capitalize() for s in edge_type_str]
+                data.edge_type_dict[id_type_edge] = "same" + "Or".join(capitalized_strings)
+
+            edge_type = [i for i, et in enumerate(data.edge_type_dict.values()) if et in edge_type_str]
+            edge_type_index = torch.cat([(data.edge_type == t).nonzero(as_tuple=False).squeeze() for t in edge_type])
+            people_nodes = data.edge_index[people, edge_type_index]
+            other_nodes = data.edge_index[other, edge_type_index]
+            pairs = torch.empty(0, 2, dtype=torch.int)
+            for value in torch.unique(other_nodes):
+                indices = torch.where(other_nodes == value)[0]
+                corresponding_values = people_nodes[indices]
+
+                if corresponding_values.size(0) <= 1:
+                    continue
+                else:
+                    nodes_pairs = torch.combinations(corresponding_values, 2)
+                    pairs = torch.cat((pairs, nodes_pairs), dim=0)
+                    pairs = torch.unique(pairs, dim=0)
+
+            print(f'{pairs.size(0)} links added for relation type {edge_type_str}')
+            data.edge_type = torch.cat((data.edge_type, torch.full((pairs.size(0),), id_type_edge)))
+            data.edge_index = torch.cat([data.edge_index, torch.transpose(pairs, 0, 1)], dim=1)
+            if data.edge_weight is not None:
+                data.edge_weight = torch.cat([data.edge_weight, torch.ones_like(pairs[:, 0], dtype=torch.float32)])
+
+        with open(path, 'wb') as handle:
+            print('created file augmented')
+            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        return data
 
 
 class WikiAlumniData:
@@ -163,19 +190,9 @@ class WikiAlumniData:
         del data['test_ent_idx']
 
         # add edge types as dictionary
+
         if len(self.same_edge) != 0:
-            edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
-                              'character', 'children', 'competitor', 'composer', 'contributor',
-                              'creator', 'deathplace', 'director', 'editor', 'founder', 'gender',
-                              'hasOccupation', 'homeLocation', 'knowsLanguage', 'lyricist', 'memberOf',
-                              'musicBy', 'nationality', 'parent', 'producer', 'publisher', 'spouse',
-                              'worksFor']
-            edge_type_dict = {}
-            for k, item in enumerate(edge_types_str):
-                edge_type_dict[k] = item
-            data.edge_type_dict = edge_type_dict
             data = add_edge_common(data, self.same_edge)
-            # todo save wikialumni augmented to avoid to create the links again and again
 
         transform = SplitRandomLinks()
         train_data, val_data, test_data = transform(data)
