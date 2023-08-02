@@ -33,8 +33,10 @@ class SubgraphSampler(object):
     def __next__(self):
         if self.current_index <= self.num_batches:
             batch = deepcopy(self.data)
+            # take the first batch_size links
             filtered_edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start+self.batch_size]
             filtered_edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
+            # only keep nodes that are in subgraph
             batch.edge_index, batch.edge_type, mask = remove_isolated_nodes(filtered_edge_index, filtered_edge_type, num_nodes=batch.num_nodes)
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
@@ -43,14 +45,15 @@ class SubgraphSampler(object):
 
             # todo question multi label: we should have duplicates in edge index with different values in edge type in multi data
             # todo ground truth 3D tensor with edges types one hot encoded at edge_index (2D) position
-            """
+            # todo find a better way to do this without loop
+            # adj = torch.squeeze(torch_geometric.utils.to_dense_adj(batch.edge_index)).unsqueeze(2).repeat(1, 1, self.data.num_classes)
             edge_type_onehot = one_hot(batch.edge_type, num_classes=self.data.num_classes)
             edge_type_truth = torch.zeros([batch.num_nodes, batch.num_nodes, self.data.num_classes], dtype=torch.int64)
             for _, i in enumerate(torch.unbind(batch.edge_index, dim=1)):
                 edge_type_truth[i,:] = edge_type_onehot[_]
-            update = scatter(edge_type_truth, batch.edge_index, edge_type_onehot)
-            edge_type_truth.index_put(torch.unbind(batch.edge_index, dim=1), edge_type_onehot, accumulate=True)
-            """
+            # update = scatter(edge_type_truth, batch.edge_index, edge_type_onehot)
+            # edge_type_truth.index_put(torch.unbind(batch.edge_index, dim=1), edge_type_onehot, accumulate=True)
+            batch.edge_labels = edge_type_truth
             self.current_index += 1
             self.e_id_start += self.batch_size
             return batch

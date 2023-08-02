@@ -1,3 +1,4 @@
+import sklearn.metrics
 import torch.nn.functional as F
 import torch
 import torch_geometric
@@ -15,8 +16,8 @@ def train(model, loader, optimizer, device, criterion):
     for i_batch, batch in enumerate(loader):
         batch.to(device)
         optimizer.zero_grad()
-        out = model(batch.x, batch.edge_index)  # todo put corret activation ?
-        loss = criterion(out, batch.edge_type) # todo
+        out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
+        loss = criterion(out, batch.edge_labels.float(), reduction='mean')
         total_loss += float(loss.item())
 
         loss.backward()
@@ -26,12 +27,23 @@ def train(model, loader, optimizer, device, criterion):
 @torch.no_grad()
 def test(model, loader, criterion, device, evaluator):
     model.eval()
-    # test loade rshould include the whole dataset
+    # test loader should include the whole dataset
+    outs, labels = [], []
     for i, batch in enumerate(loader):
-        batch .to(device)
-        out = model(batch.x, batch.adj) # todo activation see above
+        batch.to(device)
+        out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
+        # loss = criterion(out, batch.edge_labels.float(), reduction='mean')
+        outs.append(out.cpu())
+        labels.append(batch.edge_labels)
+    all_outs = torch.cat(outs, dim=0)
+    labels = torch.cat(labels, dim=0)
+    # train_score = evaluator(all_outs[train_mask], labels[train_mask]) ... todo
 
-    # todo
+
+
+
+
+# todo
     # compute loss
     # train, valid, test loss
     # train, valid and test accuracy
@@ -39,6 +51,10 @@ def test(model, loader, criterion, device, evaluator):
 
 
 def run_experiment(args):
+    """
+    helpful article on multi-label classification
+    https://www.kdnuggets.com/2023/03/multilabel-nlp-analysis-class-imbalance-loss-function-approaches.html#:~:text=In%20the%20context%20of%20using,loss%20as%20the%20loss%20function.
+    """
     torch_geometric.seed_everything(args.seed)
     if args.mps:
         print(f"MPS backend available {torch.backends.mps.is_available()}")
@@ -60,8 +76,8 @@ def run_experiment(args):
             # model.reset_parameters()
             optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2),
                                          eps=args.adam_eps, amsgrad=False, weight_decay=args.weight_decay)
-            criterion = torch.nn.BCEWithLogitsLoss
-            evaluator = classification_report # put metric todo
+            criterion = F.binary_cross_entropy  # or with logits ?
+            evaluator = sklearn.metrics.f1_score # classification_report["f1score"] # put metric todo
             run_logger = RunLogger(run, model, args)
 
             for epoch in range(args.epochs):
