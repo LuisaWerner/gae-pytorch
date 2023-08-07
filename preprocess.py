@@ -96,11 +96,8 @@ def get_data(args):
     return data
 
 
-def filter_by_edge_type(data, edge_list: [str]):
-    """
-    filter edges by certain types defined in edge list
-    """
-    # todo this should be stored as attroibute in data object
+def add_edge_type_dict(data):
+    """ adds attribute edge type dict """
     edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
                       'character', 'children', 'competitor', 'composer', 'contributor',
                       'creator', 'deathplace', 'director', 'editor', 'founder', 'gender',
@@ -110,13 +107,24 @@ def filter_by_edge_type(data, edge_list: [str]):
     edge_type_dict = {}
     for k, item in enumerate(edge_types_str):
         edge_type_dict[k] = item
-
     data.edge_type_dict = edge_type_dict
+    return data
 
-    filter_mask = sum(data.edge_type==i for i in edge_list).bool()
+
+def subgraph_by_edge_type(data, edge_list: [str], keep_all_nodes=False):
+    """
+    filter edges by certain types defined in edge list
+    keeps
+    """
+    filter_mask = sum(data.edge_type == list(data.edge_type_dict.values()).index(i) for i in edge_list).bool()
     data.edge_type = data.edge_type[filter_mask]
     data.edge_index = data.edge_index[:, filter_mask]
+    node_mask = remove_isolated_nodes(data.edge_index, data.edge_type, num_nodes=data.num_nodes)[2]
+    if not keep_all_nodes:
+        data.x = data.x[node_mask]
+        data.y = data.y[node_mask]
     return data
+
 
 def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented.pkl'):
     """
@@ -133,19 +141,6 @@ def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented
 
     else:
         print('Create wikialumni_augmented. This can take a while .... ')
-        # todo edge type dict should be stored as attribute of data object
-        edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
-                          'character', 'children', 'competitor', 'composer', 'contributor',
-                          'creator', 'deathplace', 'director', 'editor', 'founder', 'gender',
-                          'hasOccupation', 'homeLocation', 'knowsLanguage', 'lyricist', 'memberOf',
-                          'musicBy', 'nationality', 'parent', 'producer', 'publisher', 'spouse',
-                          'worksFor']
-        edge_type_dict = {}
-        for k, item in enumerate(edge_types_str):
-            edge_type_dict[k] = item
-
-        data.edge_type_dict = edge_type_dict
-
         for i, edge_type_str in enumerate(edge_list):
 
             if edge_type_str in ["deathplace", "homeLocation", "hasOccupation", "nationality", "birthplace", "affiliation",
@@ -187,8 +182,10 @@ def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented
             print(f'{pairs.size(0)} links added for relation type {edge_type_str}')
             data.edge_type = torch.cat((data.edge_type, torch.full((pairs.size(0),), id_type_edge)))
             data.edge_index = torch.cat([data.edge_index, torch.transpose(pairs, 0, 1)], dim=1)
+            data.num_classes += 1
             if data.edge_weight is not None:
                 data.edge_weight = torch.cat([data.edge_weight, torch.ones_like(pairs[:, 0], dtype=torch.float32)])
+
 
         with open(path, 'wb') as handle:
             print('created file augmented')
@@ -221,16 +218,20 @@ class WikiAlumniData:
         del data['val_ent_idx']
         del data['test_ent_idx']
 
-        # add edge types as dictionary
+        # create initial dictionary for edges
+        data = add_edge_type_dict(data)
 
+        # add new edges
         if len(self.same_edge) != 0:
             data = add_edge_common(data, self.same_edge)
 
-        data = filter_by_edge_type(data, [7, 25])
+        data = subgraph_by_edge_type(data, ["children", "parent"])
+
         transform = SplitRandomLinks()
         data, train_data, val_data, test_data = transform(data)
 
         # samplers for batch learning
+        # todo this needs to be changed, try with fullbatch for two links
         train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
         val_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
         test_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
