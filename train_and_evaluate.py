@@ -72,7 +72,6 @@ def run_experiment(args):
 
         for run in range(args.runs):
             data, train_data, val_data, test_data = get_data(args)
-            # train_data.to(device), val_data.to(device), test_data.to(device)
             model = get_model(args, data).to(device)
             # model.reset_parameters()
             optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2),
@@ -82,10 +81,7 @@ def run_experiment(args):
             run_logger = RunLogger(run, model, args)
 
             for epoch in range(args.epochs):
-                # start = time()
                 train(model, train_data, optimizer, device, criterion)
-
-                # end = time()
 
                 loss_and_metrics = test(model, train_data, criterion, device, evaluator) # todo just put here for debug
                 run_logger.update_per_epoch(**args) # todo

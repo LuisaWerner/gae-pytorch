@@ -96,6 +96,28 @@ def get_data(args):
     return data
 
 
+def filter_by_edge_type(data, edge_list: [str]):
+    """
+    filter edges by certain types defined in edge list
+    """
+    # todo this should be stored as attroibute in data object
+    edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
+                      'character', 'children', 'competitor', 'composer', 'contributor',
+                      'creator', 'deathplace', 'director', 'editor', 'founder', 'gender',
+                      'hasOccupation', 'homeLocation', 'knowsLanguage', 'lyricist', 'memberOf',
+                      'musicBy', 'nationality', 'parent', 'producer', 'publisher', 'spouse',
+                      'worksFor']
+    edge_type_dict = {}
+    for k, item in enumerate(edge_types_str):
+        edge_type_dict[k] = item
+
+    data.edge_type_dict = edge_type_dict
+
+    filter_mask = sum(data.edge_type==i for i in edge_list).bool()
+    data.edge_type = data.edge_type[filter_mask]
+    data.edge_index = data.edge_index[:, filter_mask]
+    return data
+
 def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented.pkl'):
     """
      Add new type of edge between two "people" nodes for knowing if they have a common third "other" node inn common.
@@ -111,6 +133,7 @@ def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented
 
     else:
         print('Create wikialumni_augmented. This can take a while .... ')
+        # todo edge type dict should be stored as attribute of data object
         edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
                           'character', 'children', 'competitor', 'composer', 'contributor',
                           'creator', 'deathplace', 'director', 'editor', 'founder', 'gender',
@@ -203,6 +226,7 @@ class WikiAlumniData:
         if len(self.same_edge) != 0:
             data = add_edge_common(data, self.same_edge)
 
+        data = filter_by_edge_type(data, [7, 25])
         transform = SplitRandomLinks()
         data, train_data, val_data, test_data = transform(data)
 
