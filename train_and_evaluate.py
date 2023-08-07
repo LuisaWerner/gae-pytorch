@@ -14,9 +14,10 @@ def train(model, loader, optimizer, device, criterion):
     model.train()
     total_loss = 0
     for i_batch, batch in enumerate(loader):
+        print(f'Batch {i_batch} of {len(loader)}')
         batch.to(device)
         optimizer.zero_grad()
-        out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
+        out = model(batch.x, batch.edge_index)[0]
         loss = criterion(out, batch.edge_labels.float(), reduction='mean')
         total_loss += float(loss.item())
 
@@ -33,7 +34,7 @@ def test(model, loader, criterion, device, evaluator):
         batch.to(device)
         out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
         # loss = criterion(out, batch.edge_labels.float(), reduction='mean')
-        outs.append(out.cpu())
+        outs.append(out.cpu()) # todo: outs have different shapes because the number of nodes is different
         labels.append(batch.edge_labels)
     all_outs = torch.cat(outs, dim=0)
     labels = torch.cat(labels, dim=0)
@@ -83,9 +84,10 @@ def run_experiment(args):
             for epoch in range(args.epochs):
                 # start = time()
                 train(model, train_data, optimizer, device, criterion)
+
                 # end = time()
 
-                loss_and_metrics = test(model, criterion, device, evaluator) # todo output
+                loss_and_metrics = test(model, train_data, criterion, device, evaluator) # todo just put here for debug
                 run_logger.update_per_epoch(**args) # todo
 
                 # early stopping

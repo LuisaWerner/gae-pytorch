@@ -16,6 +16,8 @@ class SubgraphSampler(object):
     """
     see https://pytorch-geometric.readthedocs.io/en/1.3.1/_modules/torch_geometric/data/sampler.html
     https: // pytorch - geometric.readthedocs.io / en / latest / _modules / torch_geometric / loader / dynamic_batch_sampler.html
+    Makes edges based on edge index. Equal length of edge index per batch
+    Problem: overlaps in nodes. Some nodes appear in multiple batches.
     """
     def __init__(self, data, batch_size):
         self.batch_size = batch_size
@@ -77,11 +79,15 @@ class SplitRandomLinks(BaseTransform):
         val_mask = torch.cat([torch.zeros(num_train_edges, dtype=torch.bool), torch.ones(num_val_edges, dtype=torch.bool), torch.zeros(num_test_edges, dtype=torch.bool)])
         test_mask = torch.cat([torch.zeros(num_train_edges + num_val_edges, dtype=torch.bool), torch.ones(num_test_edges, dtype=torch.bool)])
 
+        data.train_mask = train_mask
+        data.val_mask = val_mask
+        data.test_mask = test_mask
+
         train_data = data.edge_subgraph(rand_perm[train_mask])
         val_data = data.edge_subgraph(rand_perm[val_mask])
         test_data = data.edge_subgraph(rand_perm[test_mask])
 
-        return train_data, val_data, test_data
+        return data, train_data, val_data, test_data
 
 
 def get_data(args):
@@ -198,7 +204,7 @@ class WikiAlumniData:
             data = add_edge_common(data, self.same_edge)
 
         transform = SplitRandomLinks()
-        train_data, val_data, test_data = transform(data)
+        data, train_data, val_data, test_data = transform(data)
 
         # samplers for batch learning
         train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
