@@ -2,6 +2,7 @@
 
 # large data files 
 *.pkl
+WikiAlumni
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
