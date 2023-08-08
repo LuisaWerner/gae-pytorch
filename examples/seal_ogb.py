@@ -429,7 +429,7 @@ if args.dataset.startswith('ogbl'):
         data.x[:, 1] = torch.nn.functional.normalize(data.x[:, 1], dim=0)
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
 else:
-    path = osp.join('dataset', args.dataset)
+    path = osp.join('../dataset', args.dataset)
     dataset = Planetoid(path, args.dataset)
     split_edge = do_edge_split(dataset, args.fast_split)
     data = dataset[0]

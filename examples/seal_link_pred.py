@@ -130,7 +130,7 @@ class SEALDataset(InMemoryDataset):
         return z.to(torch.long)
 
 
-path = osp.join(osp.dirname(osp.realpath(__file__)), '../..', 'data', 'Planetoid')
+path = osp.join(osp.dirname(osp.realpath(__file__)), '../../..', 'data', 'Planetoid')
 dataset = Planetoid(path, name='Cora')
 
 train_dataset = SEALDataset(dataset, num_hops=2, split='train')
