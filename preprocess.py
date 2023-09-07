@@ -230,12 +230,12 @@ class WikiAlumniData:
         transform = RandomLinkSplit(is_undirected=True, num_val=0.1, num_test=0.3)
         train_data, val_data, test_data = transform(data)
 
-        data.edge_index_train = train_data.edge_label_index
-        data.edge_type_train = train_data.edge_label
-        data.edge_index_val = val_data.edge_label_index
-        data.edge_type_val = val_data.edge_label
-        data.edge_index_val = test_data.edge_label_index
-        data.edge_type_val = test_data.edge_label
+        data.train_edge_index = train_data.edge_index
+        data.train_edge_type = train_data.edge_type
+        data.val_edge_index = val_data.edge_index
+        data.val_edge_type = val_data.edge_type
+        data.test_edge_index = test_data.edge_index
+        data.test_edge_type = test_data.edge_type
         
         # samplers for batch learning
         # # todo this needs to be changed, try with fullbatch for two links

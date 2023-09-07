@@ -6,24 +6,49 @@ import torch.backends.mps
 from model import get_model, RGCNEncoder, DistMultDecoder
 from preprocess import get_data
 from torch_geometric.nn import GAE
+from torch_geometric.utils import negative_sampling
 from time import time
 from logger import *
 from sklearn.metrics import classification_report
 
 
-def train(model, loader, optimizer, device, criterion):
-    model.train()
-    total_loss = 0
-    for i_batch, batch in enumerate(loader):
-        print(f'Batch {i_batch} of {len(loader)}')
-        batch.to(device)
-        optimizer.zero_grad()
-        out = model(batch.x, batch.edge_index)[0]
-        loss = criterion(out, batch.edge_labels.float(), reduction='mean')
-        total_loss += float(loss.item())
+# def train(model, loader, optimizer, device, criterion):
+#     model.train()
+#     total_loss = 0
+#     for i_batch, batch in enumerate(loader):
+#         print(f'Batch {i_batch} of {len(loader)}')
+#         batch.to(device)
+#         optimizer.zero_grad()
+#         out = model(batch.x, batch.edge_index)[0]
+#         loss = criterion(out, batch.edge_labels.float(), reduction='mean')
+#         total_loss += float(loss.item())
+#
+#         loss.backward()
+#         optimizer.step()
 
-        loss.backward()
-        optimizer.step()
+def train(model, data, optimizer):
+    model.train()
+    optimizer.zero_grad()
+
+    z = model.encode(data.x, data.edge_index, data.edge_type)
+
+    pos_out = model.decode(z, data.train_edge_index, data.train_edge_type)
+
+    neg_edge_index = negative_sampling(data.edge_index, data.num_nodes, num_neg_samples=len(data.train_edge_index[1])) # todo
+    neg_out = model.decode(z, neg_edge_index, data.train_edge_type)
+
+    out = torch.cat([pos_out, neg_out])
+    gt = torch.cat([torch.ones_like(pos_out), torch.zeros_like(neg_out)])
+    cross_entropy_loss = F.binary_cross_entropy_with_logits(out, gt)
+    reg_loss = z.pow(2).mean() + model.decoder.rel_emb.pow(2).mean() # regularization
+    loss = cross_entropy_loss + 1e-2 * reg_loss
+
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
+    optimizer.step()
+
+    return float(loss)
+
 
 
 @torch.no_grad()
@@ -75,19 +100,18 @@ def run_experiment(args):
             data = get_data(args)
             model = GAE(
                 RGCNEncoder(data.num_nodes, 500, num_relations=len(data.edge_type_dict.keys())),
-                DistMultDecoder(num_relations=len(data.edge_type_dict.keys())// 2, hidden_channels=500),
+                DistMultDecoder(num_relations=30, hidden_channels=500),
             ).to(device)
             # model = get_model(args, data).to(device)
             # model.reset_parameters()
             optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2),
                                          eps=args.adam_eps, amsgrad=False, weight_decay=args.weight_decay)
-            criterion = F.binary_cross_entropy  # or with logits ?
-            evaluator = sklearn.metrics.f1_score # classification_report["f1score"] # put metric todo
-            run_logger = RunLogger(run, model, args)
+            # evaluator = sklearn.metrics.f1_score # classification_report["f1score"] # put metric todo
+            # run_logger = RunLogger(run, model, args)
 
             for epoch in range(args.epochs):
-                train(model, train_data, optimizer, device, criterion)
-
+                loss = train(model, data, optimizer)
+                print('test until here ')
                 loss_and_metrics = test(model, train_data, criterion, device, evaluator) # todo just put here for debug
                 run_logger.update_per_epoch(**args) # todo
 
