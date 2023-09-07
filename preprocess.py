@@ -222,18 +222,25 @@ class WikiAlumniData:
         data = add_edge_type_dict(data)
 
         # add new edges
-        if len(self.same_edge) != 0:
-            data = add_edge_common(data, self.same_edge)
+        # if len(self.same_edge) != 0:
+        #     data = add_edge_common(data, self.same_edge)
 
-        data = subgraph_by_edge_type(data, ["children", "parent"])
+        # data = subgraph_by_edge_type(data, ["children", "parent"])
 
-        transform = SplitRandomLinks()
-        data, train_data, val_data, test_data = transform(data)
+        transform = RandomLinkSplit(is_undirected=True, num_val=0.1, num_test=0.3)
+        train_data, val_data, test_data = transform(data)
 
+        data.edge_index_train = train_data.edge_label_index
+        data.edge_type_train = train_data.edge_label
+        data.edge_index_val = val_data.edge_label_index
+        data.edge_type_val = val_data.edge_label
+        data.edge_index_val = test_data.edge_label_index
+        data.edge_type_val = test_data.edge_label
+        
         # samplers for batch learning
-        # todo this needs to be changed, try with fullbatch for two links
-        train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
-        val_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
-        test_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
+        # # todo this needs to be changed, try with fullbatch for two links
+        # train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
+        # val_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
+        # test_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
 
-        return data, train_loader, val_loader, test_loader
+        return data

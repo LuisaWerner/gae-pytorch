@@ -91,7 +91,7 @@ def train():
 
     pos_out = model.decode(z, data.train_edge_index, data.train_edge_type)
 
-    neg_edge_index = negative_sampling(data.train_edge_index, data.num_nodes)
+    neg_edge_index = negative_sampling(data.train_edge_index, data.num_nodes) # todo check if triples are true in valid or test set?
     neg_out = model.decode(z, neg_edge_index, data.train_edge_type)
 
     out = torch.cat([pos_out, neg_out])

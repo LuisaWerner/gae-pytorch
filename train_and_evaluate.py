@@ -3,8 +3,9 @@ import torch.nn.functional as F
 import torch
 import torch_geometric
 import torch.backends.mps
-from model import get_model
+from model import get_model, RGCNEncoder, DistMultDecoder
 from preprocess import get_data
+from torch_geometric.nn import GAE
 from time import time
 from logger import *
 from sklearn.metrics import classification_report
@@ -71,8 +72,12 @@ def run_experiment(args):
         # evaluator = Evaluator(args)
 
         for run in range(args.runs):
-            data, train_data, val_data, test_data = get_data(args)
-            model = get_model(args, data).to(device)
+            data = get_data(args)
+            model = GAE(
+                RGCNEncoder(data.num_nodes, 500, num_relations=len(data.edge_type_dict.keys())),
+                DistMultDecoder(num_relations=len(data.edge_type_dict.keys())// 2, hidden_channels=500),
+            ).to(device)
+            # model = get_model(args, data).to(device)
             # model.reset_parameters()
             optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2),
                                          eps=args.adam_eps, amsgrad=False, weight_decay=args.weight_decay)
