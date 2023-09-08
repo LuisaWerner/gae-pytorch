@@ -4,25 +4,18 @@
 
 import argparse
 import time
-import os, sys
+import os
 import os.path as osp
 from shutil import copy
 import copy as cp
-from tqdm import tqdm
-import pdb
 
-import numpy as np
 from sklearn.metrics import roc_auc_score
-import scipy.sparse as ssp
-import torch
 from torch.nn import BCEWithLogitsLoss
-from torch.utils.data import DataLoader
 
 from torch_sparse import coalesce
-import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
-from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader
-from torch_geometric.utils import to_networkx, to_undirected
+from torch_geometric.data import Dataset, InMemoryDataset
+from torch_geometric.utils import to_undirected
 
 from ogb.linkproppred import PygLinkPropPredDataset, Evaluator
 
@@ -409,7 +402,7 @@ if not os.path.exists(args.res_dir):
 if not args.keep_old:
     # Backup python files.
     copy('seal_link_pred.py', args.res_dir)
-    copy('utils.py', args.res_dir)
+    copy('../utils.py', args.res_dir)
 log_file = os.path.join(args.res_dir, 'log.txt')
 # Save command line input.
 cmd_input = 'python ' + ' '.join(sys.argv) + '\n'

@@ -7,9 +7,8 @@ from model import get_model, RGCNEncoder, DistMultDecoder
 from preprocess import get_data
 from torch_geometric.nn import GAE
 from torch_geometric.utils import negative_sampling
-from time import time
+from utils import compute_mrr
 from logger import *
-from sklearn.metrics import classification_report
 
 
 # def train(model, loader, optimizer, device, criterion):
@@ -49,22 +48,32 @@ def train(model, data, optimizer):
 
     return float(loss)
 
-
-
 @torch.no_grad()
-def test(model, loader, criterion, device, evaluator):
+def test(model, data):
     model.eval()
-    # test loader should include the whole dataset
-    outs, labels = [], []
-    for i, batch in enumerate(loader):
-        batch.to(device)
-        out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
-        # loss = criterion(out, batch.edge_labels.float(), reduction='mean')
-        outs.append(out.cpu()) # todo: outs have different shapes because the number of nodes is different
-        labels.append(batch.edge_labels)
-    all_outs = torch.cat(outs, dim=0)
-    labels = torch.cat(labels, dim=0)
-    # train_score = evaluator(all_outs[train_mask], labels[train_mask]) ... todo
+    z = model.encode(data.x, data.edge_index, data.edge_type)
+
+    # todo how does mrr actually work ?
+    valid_mrr = compute_mrr(z, data.val_edge_index, data.val_edge_type, data, model)
+    test_mrr = compute_mrr(z, data.test_edge_index, data.test_edge_type, data, model)
+
+    return valid_mrr, test_mrr
+
+
+# @torch.no_grad()
+# def test(model, loader, criterion, device, evaluator):
+#     model.eval()
+#     # test loader should include the whole dataset
+#     outs, labels = [], []
+#     for i, batch in enumerate(loader):
+#         batch.to(device)
+#         out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
+#         # loss = criterion(out, batch.edge_labels.float(), reduction='mean')
+#         outs.append(out.cpu()) # todo: outs have different shapes because the number of nodes is different
+#         labels.append(batch.edge_labels)
+#     all_outs = torch.cat(outs, dim=0)
+#     labels = torch.cat(labels, dim=0)
+#     # train_score = evaluator(all_outs[train_mask], labels[train_mask]) ... todo
 
 
 
@@ -111,8 +120,10 @@ def run_experiment(args):
 
             for epoch in range(args.epochs):
                 loss = train(model, data, optimizer)
-                print('test until here ')
-                loss_and_metrics = test(model, train_data, criterion, device, evaluator) # todo just put here for debug
+                print(f'Epoch: {epoch:05d}, Loss: {loss:.4f}')
+                # if (epoch % 500) == 0:
+                valid_mrr, test_mrr = test(model, data)
+                print(f'Val MRR: {valid_mrr:.4f}, Test MRR: {test_mrr:.4f}')
                 run_logger.update_per_epoch(**args) # todo
 
                 # early stopping

@@ -37,7 +37,7 @@ def compute_mrr(z, edge_index, edge_type, data, model):
         tail_mask = torch.ones(data.num_nodes, dtype=torch.bool)
         for (heads, tails), types in [
             (data.train_edge_index, data.train_edge_type),
-            (data.valid_edge_index, data.valid_edge_type),
+            (data.val_edge_index, data.val_edge_type),
             (data.test_edge_index, data.test_edge_type),
         ]:
             tail_mask[tails[(heads == src) & (types == rel)]] = False
@@ -56,7 +56,7 @@ def compute_mrr(z, edge_index, edge_type, data, model):
         head_mask = torch.ones(data.num_nodes, dtype=torch.bool)
         for (heads, tails), types in [
             (data.train_edge_index, data.train_edge_type),
-            (data.valid_edge_index, data.valid_edge_type),
+            (data.val_edge_index, data.val_edge_type),
             (data.test_edge_index, data.test_edge_type),
         ]:
             head_mask[heads[(tails == dst) & (types == rel)]] = False
