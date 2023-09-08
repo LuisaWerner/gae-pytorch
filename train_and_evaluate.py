@@ -34,7 +34,7 @@ def train(model, data, optimizer):
 
     pos_out = model.decode(z, data.train_edge_index, data.train_edge_type)
 
-    neg_edge_index = negative_sampling(data.edge_index, data.num_nodes, num_neg_samples=len(data.train_edge_index[1])) # todo
+    neg_edge_index = negative_sampling(data.edge_index, data.num_nodes, num_neg_samples=len(data.train_edge_index[1])) # could be done in sampling ?
     neg_out = model.decode(z, neg_edge_index, data.train_edge_type)
 
     out = torch.cat([pos_out, neg_out])
