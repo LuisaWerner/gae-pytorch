@@ -9,6 +9,7 @@ from copy import deepcopy
 from torch_scatter import scatter
 import torch_geometric
 from pathlib import Path
+from torch_geometric.data import HeteroData
 from typing import List, Optional, Union
 
 
@@ -221,15 +222,25 @@ class WikiAlumniData:
         # create initial dictionary for edges
         data = add_edge_type_dict(data)
 
+        # create heterodata object
+        # hetero_data = HeteroData()
+        # for key, value in data.edge_type_dict.items():
+        #     hetero_data['node'].x = data.x
+        #     hetero_data['node'].num_nodes = data.num_nodes
+        #     hetero_data['node', value, 'node'].edge_index = data.edge_index[:, torch.where(data.edge_type==key)[0]]
+        # option2 :
+        # hetero_data = data.to_heterogeneous(edge_type=data.edge_type)
+        
         # add new edges
         # if len(self.same_edge) != 0:
         #     data = add_edge_common(data, self.same_edge)
 
         # data = subgraph_by_edge_type(data, ["children", "parent"])
 
-        transform = RandomLinkSplit(is_undirected=True, num_val=0.1, num_test=0.3)
+        transform = RandomLinkSplit(is_undirected=True, num_val=0.1, num_test=0.3, add_negative_train_samples=False, edge_types=data.edge_type)
         train_data, val_data, test_data = transform(data)
 
+        # dont know if this is correct
         data.train_edge_index = train_data.edge_index
         data.train_edge_type = train_data.edge_type
         data.val_edge_index = val_data.edge_index

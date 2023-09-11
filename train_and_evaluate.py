@@ -124,18 +124,18 @@ def run_experiment(args):
                 # if (epoch % 500) == 0:
                 valid_mrr, test_mrr = test(model, data)
                 print(f'Val MRR: {valid_mrr:.4f}, Test MRR: {test_mrr:.4f}')
-                run_logger.update_per_epoch(**args) # todo
+                # run_logger.update_per_epoch(**args) # todo
 
                 # early stopping
-                if run_logger.callback_early_stopping(epoch):
-                    break
+                # if run_logger.callback_early_stopping(epoch):
+                #     break
 
-            loss_and_metrics_test = test(model, data, criterion, device, evaluator) # todo output
-            run_logger.update_per_run(**args) # todo
-            experiment_logger.add_run(run_logger)
-            print(run_logger)
+            # loss_and_metrics_test = test(model, data, criterion, device, evaluator) # todo output
+            # run_logger.update_per_run(**args) # todo
+            # experiment_logger.add_run(run_logger)
+            # print(run_logger)
 
-        experiment_logger.end_experiment()
+        # experiment_logger.end_experiment()
 
 
 
