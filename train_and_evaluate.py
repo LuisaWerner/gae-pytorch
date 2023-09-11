@@ -106,7 +106,7 @@ def run_experiment(args):
         # evaluator = Evaluator(args)
 
         for run in range(args.runs):
-            data = get_data(args)
+            data = get_data(args).to(device)
             model = GAE(
                 RGCNEncoder(data.num_nodes, 500, num_relations=len(data.edge_type_dict.keys())),
                 DistMultDecoder(num_relations=30, hidden_channels=500),
