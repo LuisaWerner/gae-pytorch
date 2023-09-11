@@ -247,11 +247,6 @@ class WikiAlumniData:
         data.val_edge_type = val_data.edge_type
         data.test_edge_index = test_data.edge_index
         data.test_edge_type = test_data.edge_type
-        
-        # samplers for batch learning
-        # # todo this needs to be changed, try with fullbatch for two links
-        # train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
-        # val_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
-        # test_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
+
 
         return data
