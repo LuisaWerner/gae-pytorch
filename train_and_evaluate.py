@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch
 import torch_geometric
 import torch.backends.mps
-from model import get_model, RGCNEncoder, DistMultDecoder
+from model import get_model, RGCNEncoder, DistMultDecoder, HetDistMultDecoder
 from preprocess import get_data
 from torch_geometric.nn import GAE
 from torch_geometric.utils import negative_sampling
@@ -114,7 +114,7 @@ def run_experiment(args):
             data = get_data(args).to(device)
             model = GAE(
                 RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
-                DistMultDecoder(num_relations=30, hidden_channels=500),
+                HetDistMultDecoder(num_relations=30, hidden_channels=500),
             ).to(device)
             # model = get_model(args, data).to(device)
             # model.reset_parameters()
