@@ -108,7 +108,7 @@ def add_edge_type_dict(data):
     edge_type_dict = {}
     for k, item in enumerate(edge_types_str):
         edge_type_dict[k] = item
-    data.edge_type_dict = edge_type_dict
+    data._edge_type_dict = edge_type_dict
     return data
 
 
@@ -203,6 +203,7 @@ class WikiAlumniData:
         self.num_test = args.num_test
         self.batch_size = args.batch_size
         self.num_classes = args.num_classes
+        self.to_hetero = False
 
     def preprocess(self):
         try:
@@ -214,30 +215,32 @@ class WikiAlumniData:
 
         data.x = data.x.type(torch.float32)
         data.num_classes = self.num_classes
+        data.edge_label = data.edge_type
 
         del data['tr_ent_idx']
         del data['val_ent_idx']
         del data['test_ent_idx']
+        del data['edge_type']
 
         # create initial dictionary for edges
         data = add_edge_type_dict(data)
 
         # create heterodata object
-        # hetero_data = HeteroData()
-        # for key, value in data.edge_type_dict.items():
-        #     hetero_data['node'].x = data.x
-        #     hetero_data['node'].num_nodes = data.num_nodes
-        #     hetero_data['node', value, 'node'].edge_index = data.edge_index[:, torch.where(data.edge_type==key)[0]]
-        # option2 :
-        # hetero_data = data.to_heterogeneous(edge_type=data.edge_type)
+        if self.to_hetero:
+            hetero_data = data.to_heterogeneous(edge_type=data.edge_type)
         
         # add new edges
-        # if len(self.same_edge) != 0:
-        #     data = add_edge_common(data, self.same_edge)
+        if len(self.same_edge) != 0:
+            data = add_edge_common(data, self.same_edge)
 
         # data = subgraph_by_edge_type(data, ["children", "parent"])
 
-        transform = RandomLinkSplit(is_undirected=True, num_val=0.1, num_test=0.3, add_negative_train_samples=False, edge_types=data.edge_type)
+        # this gives links without negative samples and keeps the edge type in edge_label
+        transform = RandomLinkSplit(is_undirected=False,
+                                    num_val=0.1,
+                                    num_test=0.3,
+                                    add_negative_train_samples=False,
+                                    neg_sampling_ratio=0.0)
         train_data, val_data, test_data = transform(data)
 
         # dont know if this is correct
@@ -250,8 +253,8 @@ class WikiAlumniData:
         
         # samplers for batch learning
         # # todo this needs to be changed, try with fullbatch for two links
-        # train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
+        train_loader = SubgraphSampler(train_data, batch_size=self.batch_size)
         # val_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
         # test_loader = SubgraphSampler(val_data, batch_size=self.batch_size)
 
-        return data
+        return data, train_data, val_data, test_data
