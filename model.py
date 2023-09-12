@@ -129,3 +129,16 @@ class DistMultDecoder(torch.nn.Module):
         z_src, z_dst = z[edge_index[0]], z[edge_index[1]]
         rel = self.rel_emb[edge_type]
         return torch.sum(z_src * rel * z_dst, dim=1)
+
+class HetDistMultDecoder(torch.nn.Module):
+    """ Decodes for multiple edge types """
+    def __init__(self, num_relations, hidden_channels):
+        super().__init__()
+        self.rel_emb = Parameter(torch.empty(num_relations, hidden_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        NotImplementedError()
+
+    def forward(self, z, edge_index, edge_type):
+        NotImplementedError()

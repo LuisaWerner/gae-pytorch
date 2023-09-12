@@ -25,13 +25,18 @@ from logger import *
 #         loss.backward()
 #         optimizer.step()
 
-def train(model, data, optimizer):
+def train(model, data, optimizer, device):
     model.train()
     optimizer.zero_grad()
 
-    z = model.encode(data.x, data.edge_index, data.edge_type)
+    for i_batch, batch in enumerate(data.train_loader):
+        batch.to(device)
+        z = model.encode(batch.x, batch.edge_label_index, batch.edge_label)
+        pos_out = model.decode(z, batch.edge_label_index, batch.edge_label)
 
-    pos_out = model.decode(z, data.train_edge_index, data.train_edge_type)
+    # todo continue here
+
+
 
     neg_edge_index = negative_sampling(data.edge_index, data.num_nodes, num_neg_samples=len(data.train_edge_index[1])) # could be done in sampling ?
     neg_out = model.decode(z, neg_edge_index, data.train_edge_type)
@@ -108,7 +113,7 @@ def run_experiment(args):
         for run in range(args.runs):
             data = get_data(args).to(device)
             model = GAE(
-                RGCNEncoder(data.num_nodes, 500, num_relations=len(data.edge_type_dict.keys())),
+                RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
                 DistMultDecoder(num_relations=30, hidden_channels=500),
             ).to(device)
             # model = get_model(args, data).to(device)
@@ -119,7 +124,7 @@ def run_experiment(args):
             # run_logger = RunLogger(run, model, args)
 
             for epoch in range(args.epochs):
-                loss = train(model, data, optimizer)
+                loss = train(model, data, optimizer, device)
                 print(f'Epoch: {epoch:05d}, Loss: {loss:.4f}')
                 # if (epoch % 500) == 0:
                 valid_mrr, test_mrr = test(model, data)
