@@ -111,7 +111,7 @@ class RGCNEncoder(torch.nn.Module):
 
     def forward(self, x,  edge_index, edge_type):
         x = self.conv1(x, edge_index, edge_type).relu_()
-        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training) # todo dropout rate as argument
         x = self.conv2(x, edge_index, edge_type)
         return x
 
@@ -140,11 +140,17 @@ class HetDistMultDecoder(torch.nn.Module):
         super().__init__()
         self.rel_emb = Parameter(torch.empty(hidden_channels, num_relations))
         self.reset_parameters()
+        self.num_relations = num_relations
 
     def reset_parameters(self):
         torch.nn.init.xavier_uniform_(self.rel_emb)
 
     def forward(self, z, edge_index):
         z_src, z_dst = z[edge_index[0]], z[edge_index[1]]
+
+        for rel in range(self.num_relations):
+            pos_decoder = torch.matmul(z_src * z_dst, self.rel_emb[rel])
+            # we cannot do negative sampling here because some negative samples might be positive in another batch
+
         return torch.matmul(z_src * z_dst, self.rel_emb)
 

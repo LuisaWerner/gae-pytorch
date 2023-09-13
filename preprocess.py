@@ -4,6 +4,7 @@ from torch_geometric.transforms import RandomLinkSplit
 from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import remove_isolated_nodes
 from torch.nn.functional import one_hot
+from torch_geometric.utils import negative_sampling
 from torch_geometric.loader import LinkNeighborLoader
 from copy import deepcopy
 from torch_scatter import scatter
@@ -19,13 +20,31 @@ class SubgraphSampler(object):
     https: // pytorch - geometric.readthedocs.io / en / latest / _modules / torch_geometric / loader / dynamic_batch_sampler.html
     Makes edges based on edge index. Equal length of edge index per batch
     Problem: overlaps in nodes. Some nodes appear in multiple batches.
+    todo: put batch size in args and pass
     """
-    def __init__(self, data, batch_size):
+    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=True):
         self.batch_size = batch_size
         self.data = data
         self.current_index = 0
         self.e_id_start = 0
         self.num_batches = round(data.num_edges / self.batch_size)
+
+        if shuffle:
+            # shuffle the edge_index before splitting into batches
+            idx = torch.randperm(data.edge_index.shape[1])
+            self.data.edge_index = data.edge_index[:, idx]
+            self.data.edge_label_index = data.edge_label_index[:, idx]
+            self.data.edge_label = data.edge_label[idx]
+
+        if neg_sampling_per_type:
+            # sample per positive edge type link in edge index a negative edge
+            neg_edge_index = torch.zeros_like(data.edge_index)
+            for rel in torch.unique(data.edge_label):
+                pos = torch.where(data.edge_label == rel)[0]
+                edge_index_filtered = data.edge_index[:, pos]
+                neg_edge_index_type = negative_sampling(edge_index_filtered) # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
+                neg_edge_index[:, pos] = neg_edge_index_type
+            self.data.neg_edge_index = neg_edge_index
 
     def __iter__(self):
         return self
@@ -37,16 +56,26 @@ class SubgraphSampler(object):
         if self.current_index <= self.num_batches:
             batch = deepcopy(self.data)
             # take the first batch_size links
-            filtered_edge_index = self.data.edge_label_index[:, self.e_id_start:self.e_id_start+self.batch_size]
-            filtered_label = self.data.edge_label[self.e_id_start:self.e_id_start+self.batch_size]
-            # only keep nodes that are in subgraph
-            batch.edge_label_index, batch.edge_label, mask = remove_isolated_nodes(filtered_edge_index, filtered_label, num_nodes=batch.num_nodes)
+            edge_index = self.data.edge_label_index[:, self.e_id_start:self.e_id_start+self.batch_size]
+            edge_label = self.data.edge_label[self.e_id_start:self.e_id_start+self.batch_size]
+
+            # keep the node ids of nodes in negative edge index
+            if hasattr(batch, 'neg_edge_index'):
+                neg_edge_index = self.data.neg_edge_index[:,
+                                                self.e_id_start:self.e_id_start + self.batch_size]
+                edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
+                edge_label = torch.cat([edge_label, edge_label])
+
+            edge_index, edge_label, mask = remove_isolated_nodes(edge_index, edge_label, num_nodes=batch.num_nodes)
+
+            batch.edge_index = edge_index
+            batch.edge_label = edge_label
+            batch.pos_edge_index = edge_index[:, :self.batch_size]
+            batch.neg_edge_index = edge_index[:, self.batch_size:]
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
             batch.num_nodes = sum(mask)
             batch.num_classes = self.data.num_classes
-
-
             self.current_index += 1
             self.e_id_start += self.batch_size
             return batch
@@ -224,7 +253,6 @@ class WikiAlumniData:
         self.num_val = args.num_val
         self.num_test = args.num_test
         self.batch_size = args.batch_size
-        self.num_classes = args.num_classes
         self.to_hetero = False
 
     def preprocess(self):
@@ -236,7 +264,7 @@ class WikiAlumniData:
             data = None
 
         data.x = data.x.type(torch.float32)
-        data.num_classes = self.num_classes
+        data.num_classes = int(len(torch.unique(data.y)))
         data.edge_label = data.edge_type
         data.num_relations = int(len(torch.unique(data.edge_type)))
 
@@ -267,17 +295,15 @@ class WikiAlumniData:
         train_data, val_data, test_data = transform(data)
 
         # don't know if this is correct
-        data.train_edge_index = train_data.edge_label_index
-        data.train_edge_label = train_data.edge_label
-        data.val_edge_index = val_data.edge_index
-        data.val_edge_label = val_data.edge_label
-        data.test_edge_index = test_data.edge_label_index
-        data.test_edge_label = test_data.edge_label
-        
-        # samplers for batch learning
-        # # todo this needs to be changed, try with fullbatch for two links
-        data.train_loader = MultiRelationalSampler(train_data)
-        data.val_loader = MultiRelationalSampler(val_data)
-        data.test_loader = MultiRelationalSampler(test_data)
+        # todo is this even needed
+        # data.train_edge_index = train_data.edge_label_index
+        # data.train_edge_label = train_data.edge_label
+        # data.val_edge_index = val_data.edge_index
+        # data.val_edge_label = val_data.edge_label
+        # data.test_edge_index = test_data.edge_label_index
+        # data.test_edge_label = test_data.edge_label
 
+        data.train_data = train_data
+        data.val_data = val_data
+        data.test_data = test_data
         return data

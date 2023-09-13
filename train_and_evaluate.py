@@ -9,6 +9,7 @@ from torch_geometric.nn import GAE
 from torch_geometric.utils import negative_sampling
 from utils import compute_mrr
 from logger import *
+from preprocess import SubgraphSampler
 
 
 # def train(model, loader, optimizer, device, criterion):
@@ -27,12 +28,20 @@ from logger import *
 
 def train(model, data, optimizer, device):
     model.train()
+    # do the train loader here
+
     optimizer.zero_grad()
 
-    for i_batch, batch in enumerate(data.train_loader):
+    # do negative sampling here and then sample per batch
+    train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=True)
+
+    for i_batch, batch in enumerate(train_loader):
         batch.to(device)
-        z = model.encode(batch.x, batch.edge_label_index, batch.edge_label)
-        pos_out = model.decode(z, batch.edge_label_index)
+        z = model.encode(batch.x, batch.edge_index, batch.edge_label)
+        # todo continue here
+        # todo verify if it works only with positive edges
+        # verify if links are referenced with node features correctly 
+        pos_out = model.decode(z, batch.edge_index)
 
     # todo continue here
 
