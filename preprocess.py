@@ -40,7 +40,7 @@ class SubgraphSampler(object):
             # sample per positive edge type link in edge index a negative edge
             neg_edge_index = torch.zeros_like(data.edge_index)
             for rel in torch.unique(data.edge_label):
-                pos = torch.where(data.edge_label == rel)[0]
+                pos = torch.where(torch.Tensor(data.edge_label == rel))[0]
                 edge_index_filtered = data.edge_index[:, pos]
                 neg_edge_index_type = negative_sampling(edge_index_filtered) # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
                 neg_edge_index[:, pos] = neg_edge_index_type
@@ -71,7 +71,9 @@ class SubgraphSampler(object):
             batch.edge_index = edge_index
             batch.edge_label = edge_label
             batch.pos_edge_index = edge_index[:, :self.batch_size]
-            batch.neg_edge_index = edge_index[:, self.batch_size:]
+
+            if hasattr(batch, 'neg_edge_index'):
+                batch.neg_edge_index = edge_index[:, self.batch_size:]
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
             batch.num_nodes = sum(mask)

@@ -39,7 +39,6 @@ def train(model, data, optimizer, device):
         batch.to(device)
         z = model.encode(batch.x, batch.edge_index, batch.edge_label)
         # todo continue here
-        # todo verify if it works only with positive edges
         # verify if links are referenced with node features correctly 
         pos_out = model.decode(z, batch.edge_index)
 
