@@ -109,11 +109,11 @@ class RGCNEncoder(torch.nn.Module):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
 
-    def forward(self, x,  edge_index, edge_type):
-        x = self.conv1(x, edge_index, edge_type).relu_()
-        x = F.dropout(x, p=0.2, training=self.training) # todo dropout rate as argument
-        x = self.conv2(x, edge_index, edge_type)
-        return x
+    def forward(self, batch):
+        z = self.conv1(batch.x, batch.edge_index, batch.edge_type).relu_()
+        z = F.dropout(z, p=0.2, training=self.training) # todo dropout rate as argument
+        z = self.conv2(z, batch.edge_index, batch.edge_type)
+        return z
 
 
 class DistMultDecoder(torch.nn.Module):
@@ -147,17 +147,12 @@ class HetDistMultDecoder(torch.nn.Module):
 
     def forward(self, z, batch):
         z_src, z_dst = z[batch.pos_edge_index[0]], z[batch.pos_edge_index[1]]
-        pos_out = torch.matmul(z_src * z_dst, self.rel_emb)
+        out = torch.matmul(z_src * z_dst, self.rel_emb)
 
         if hasattr(batch, 'neg_edge_index'):
             z_src_neg, z_dst_neg = z[batch.neg_edge_index[0]], z[batch.neg_edge_index[1]]
             neg_out = torch.matmul(z_src_neg * z_dst_neg, self.rel_emb)
-            out = torch.cat([pos_out, neg_out])
+            out = torch.cat([out, neg_out])
 
-        #
-
-        out = pos_out
-
-        # without loop : torch.matmul(z_src * z_dst, torch.transpose(self.rel_emb, 1, 0))
-        return torch.matmul(z_src * z_dst, self.rel_emb)
+        return out
 

@@ -37,8 +37,10 @@ def train(model, data, optimizer, device):
 
     for i_batch, batch in enumerate(train_loader):
         batch.to(device)
-        z = model.encode(batch.x, batch.edge_index, batch.edge_label)
+        z = model.encode(batch)
         pos_out = model.decode(z, batch)
+
+
 
     # todo continue here
 
