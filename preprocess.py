@@ -34,13 +34,13 @@ class SubgraphSampler(object):
             idx = torch.randperm(data.edge_index.shape[1])
             self.data.edge_index = data.edge_index[:, idx]
             self.data.edge_label_index = data.edge_label_index[:, idx]
-            self.data.edge_label = data.edge_label[idx]
+            self.data.edge_type = data.edge_type[idx]
 
         if neg_sampling_per_type:
             # sample per positive edge type link in edge index a negative edge
             neg_edge_index = torch.zeros_like(data.edge_index)
-            for rel in torch.unique(data.edge_label):
-                pos = torch.where(torch.Tensor(data.edge_label == rel))[0]
+            for rel in torch.unique(data.edge_type):
+                pos = torch.where(torch.Tensor(data.edge_type == rel))[0]
                 edge_index_filtered = data.edge_index[:, pos]
                 neg_edge_index_type = negative_sampling(edge_index_filtered) # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
                 neg_edge_index[:, pos] = neg_edge_index_type
@@ -57,27 +57,34 @@ class SubgraphSampler(object):
             batch = deepcopy(self.data)
             # take the first batch_size links
             edge_index = self.data.edge_label_index[:, self.e_id_start:self.e_id_start+self.batch_size]
-            edge_label = self.data.edge_label[self.e_id_start:self.e_id_start+self.batch_size]
+            edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
 
             # keep the node ids of nodes in negative edge index
             if hasattr(batch, 'neg_edge_index'):
                 neg_edge_index = self.data.neg_edge_index[:,
                                                 self.e_id_start:self.e_id_start + self.batch_size]
                 edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
-                edge_label = torch.cat([edge_label, edge_label])
+                edge_type = torch.cat([edge_type, edge_type])
 
-            edge_index, edge_label, mask = remove_isolated_nodes(edge_index, edge_label, num_nodes=batch.num_nodes)
+            edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
 
             batch.edge_index = edge_index
-            batch.edge_label = edge_label
-            batch.pos_edge_index = edge_index[:, :self.batch_size]
+            batch.edge_type = edge_type
 
+            batch.pos_edge_index = edge_index[:, :self.batch_size]
             if hasattr(batch, 'neg_edge_index'):
                 batch.neg_edge_index = edge_index[:, self.batch_size:]
+
+            # put here label creation
+            neg_edge_label = torch.zeros(batch.neg_edge_index.shape[1], batch.num_relations)
+            pos_edge_label = one_hot(batch.edge_type[:self.batch_size], num_classes=batch.num_relations)
+            batch.edge_label = torch.cat([pos_edge_label, neg_edge_label])
+
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
             batch.num_nodes = sum(mask)
             batch.num_classes = self.data.num_classes
+
             self.current_index += 1
             self.e_id_start += self.batch_size
             return batch
@@ -104,10 +111,10 @@ class MultiRelationalSampler(object):
     def __next__(self):
         if self.current_type <= self.data.num_relations:
             batch = deepcopy(self.data)
-            ids = torch.where(self.data.edge_label == self.current_type)[0]
+            ids = torch.where(self.data.edge_type == self.current_type)[0]
             filtered_edge_index = self.data.edge_label_index[:, ids]
-            filtered_edge_label = self.data.edge_label[ids]
-            batch.edge_label_index, batch.edge_label, mask = remove_isolated_nodes(filtered_edge_index, filtered_edge_label, num_nodes=self.data.num_nodes)
+            filtered_edge_type = self.data.edge_type[ids]
+            batch.edge_label_index, batch.edge_type, mask = remove_isolated_nodes(filtered_edge_index, filtered_edge_type, num_nodes=self.data.num_nodes)
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
             batch.num_nodes = sum(mask)
@@ -267,13 +274,11 @@ class WikiAlumniData:
 
         data.x = data.x.type(torch.float32)
         data.num_classes = int(len(torch.unique(data.y)))
-        data.edge_label = data.edge_type
         data.num_relations = int(len(torch.unique(data.edge_type)))
 
         del data['tr_ent_idx']
         del data['val_ent_idx']
         del data['test_ent_idx']
-        del data['edge_type']
 
         # create initial dictionary for edges
         data = add_edge_type_dict(data)

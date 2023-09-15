@@ -38,9 +38,7 @@ def train(model, data, optimizer, device):
     for i_batch, batch in enumerate(train_loader):
         batch.to(device)
         z = model.encode(batch.x, batch.edge_index, batch.edge_label)
-        # todo continue here
-        # verify if links are referenced with node features correctly 
-        pos_out = model.decode(z, batch.edge_index)
+        pos_out = model.decode(z, batch)
 
     # todo continue here
 

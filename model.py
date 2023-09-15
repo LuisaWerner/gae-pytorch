@@ -145,12 +145,19 @@ class HetDistMultDecoder(torch.nn.Module):
     def reset_parameters(self):
         torch.nn.init.xavier_uniform_(self.rel_emb)
 
-    def forward(self, z, edge_index):
-        z_src, z_dst = z[edge_index[0]], z[edge_index[1]]
+    def forward(self, z, batch):
+        z_src, z_dst = z[batch.pos_edge_index[0]], z[batch.pos_edge_index[1]]
+        pos_out = torch.matmul(z_src * z_dst, self.rel_emb)
 
-        for rel in range(self.num_relations):
-            pos_decoder = torch.matmul(z_src * z_dst, self.rel_emb[rel])
-            # we cannot do negative sampling here because some negative samples might be positive in another batch
+        if hasattr(batch, 'neg_edge_index'):
+            z_src_neg, z_dst_neg = z[batch.neg_edge_index[0]], z[batch.neg_edge_index[1]]
+            neg_out = torch.matmul(z_src_neg * z_dst_neg, self.rel_emb)
+            out = torch.cat([pos_out, neg_out])
 
+        #
+
+        out = pos_out
+
+        # without loop : torch.matmul(z_src * z_dst, torch.transpose(self.rel_emb, 1, 0))
         return torch.matmul(z_src * z_dst, self.rel_emb)
 
