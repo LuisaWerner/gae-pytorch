@@ -67,22 +67,23 @@ class SubgraphSampler(object):
                 edge_type = torch.cat([edge_type, edge_type])
 
             edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
-            batch.edge_index = edge_index
-            batch.edge_type = edge_type
+            # batch = torch_geometric.data.Data()
+            batch['edge_index'] = edge_index
+            batch['edge_type'] = edge_type
 
-            batch.pos_edge_index = edge_index[:, :self.batch_size]
+            batch['pos_edge_index'] = edge_index[:, :self.batch_size]
             if hasattr(batch, 'neg_edge_index'):
-                batch.neg_edge_index = edge_index[:, self.batch_size:]
+                batch['neg_edge_index'] = edge_index[:, self.batch_size:]
 
             # put here label creation
             neg_edge_label = torch.zeros(batch.neg_edge_index.shape[1], batch.num_relations)
             pos_edge_label = one_hot(batch.edge_type[:self.batch_size], num_classes=batch.num_relations)
-            batch.edge_label = torch.cat([pos_edge_label, neg_edge_label])
+            batch['edge_label'] = torch.cat([pos_edge_label, neg_edge_label])
 
-            batch.x = batch.x[mask, :]
-            batch.y = batch.y[mask]
-            batch.num_nodes = sum(mask)
-            batch.num_classes = self.data.num_classes
+            batch['x'] = batch.x[mask, :]
+            batch['y'] = batch.y[mask]
+            batch['num_nodes'] = sum(mask)
+            batch['num_classes'] = self.data.num_classes
 
             self.current_index += 1
             self.e_id_start += self.batch_size
@@ -271,9 +272,9 @@ class WikiAlumniData:
             print("Put the pickle file in directory")
             data = None
 
-        data.x = data.x.type(torch.float32)
-        data.num_classes = int(len(torch.unique(data.y)))
-        data.num_relations = int(len(torch.unique(data.edge_type)))
+        data['x'] = data.x.type(torch.float32)
+        data['num_classes'] = int(len(torch.unique(data.y)))
+        data['num_relations'] = int(len(torch.unique(data.edge_type)))
 
         del data['tr_ent_idx']
         del data['val_ent_idx']
