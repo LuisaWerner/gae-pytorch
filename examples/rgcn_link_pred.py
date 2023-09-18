@@ -134,7 +134,7 @@ def compute_mrr(z, edge_index, edge_type):
     for i in tqdm(range(edge_type.numel())):
         (src, dst), rel = edge_index[:, i], edge_type[i]
 
-        # Try all nodes as tails, but delete true triplets:
+        # Try all nodes as tails, but delete true triplets, iterate through train/val/test bc true triples from whole graph should be removed
         tail_mask = torch.ones(data.num_nodes, dtype=torch.bool)
         for (heads, tails), types in [
             (data.train_edge_index, data.train_edge_type),

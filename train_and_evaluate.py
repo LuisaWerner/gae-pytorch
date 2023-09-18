@@ -1,4 +1,3 @@
-
 import torch.nn.functional as F
 import torch
 import torch_geometric
@@ -10,23 +9,22 @@ from torch_geometric.utils import negative_sampling
 from utils import compute_mrr
 from logger import *
 from preprocess import SubgraphSampler
+from sklearn.metrics import roc_auc_score
 
 
 def train(model, data, optimizer, device):
     model.train()
-    # do the train loader here
-
     optimizer.zero_grad()
 
     # do negative sampling here and then sample per batch
     train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=True)
-    regularize = False # todo
+    regularize = False  # todo
 
     total_loss = 0
     for i_batch, batch in enumerate(train_loader):
         batch.to(device)
         z = model.encode(batch)
-        out = model.decode(z, batch) # pos and neg edges
+        out = model.decode(z, batch)  # pos and neg edges
         loss = F.binary_cross_entropy_with_logits(out, batch.edge_label)
 
         if regularize:
@@ -37,47 +35,37 @@ def train(model, data, optimizer, device):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
         optimizer.step()
-        print(loss)
+        if i_batch % 10 == 0:
+            print(f'Training: Batch {i_batch} of {len(train_loader)}')
 
     # todo we do not even need a return statement?
     return float(total_loss)
 
+
 @torch.no_grad()
-def test(model, data):
+def test(model, data, device):
+    loader = SubgraphSampler(data, shuffle=False, neg_sampling_per_type=True)
     model.eval()
-    z = model.encode(data.x, data.edge_index, data.edge_type)
 
-    # todo how does mrr actually work ?
-    valid_mrr = compute_mrr(z, data.val_edge_index, data.val_edge_type, data, model)
-    test_mrr = compute_mrr(z, data.test_edge_index, data.test_edge_type, data, model)
+    outs = []
+    ground_truths = []
+    for i_batch, batch in enumerate(loader):
+        batch.to(device)
+        z = model.encode(batch)
+        outs.append(model.decode(z, batch).sigmoid())  # todo is sigmoid correct  ?
+        ground_truths.append(batch.edge_label)
+        if i_batch % 10 == 0:
+            print(f'Evaluating: Batch {i_batch} of {len(loader)}')
 
-    return valid_mrr, test_mrr
+    all_outs = torch.cat(outs, dim=0)
+    all_ground_truth = torch.cat(ground_truths, dim=0)
+    auc = roc_auc_score(all_ground_truth.cpu().numpy(), all_outs.cpu().numpy())
 
-
-# @torch.no_grad()
-# def test(model, loader, criterion, device, evaluator):
-#     model.eval()
-#     # test loader should include the whole dataset
-#     outs, labels = [], []
-#     for i, batch in enumerate(loader):
-#         batch.to(device)
-#         out = model(batch.x, batch.edge_index)[0]  # todo put corret activation ?
-#         # loss = criterion(out, batch.edge_labels.float(), reduction='mean')
-#         outs.append(out.cpu()) # todo: outs have different shapes because the number of nodes is different
-#         labels.append(batch.edge_labels)
-#     all_outs = torch.cat(outs, dim=0)
-#     labels = torch.cat(labels, dim=0)
-#     # train_score = evaluator(all_outs[train_mask], labels[train_mask]) ... todo
-
-
-
-
-
-# todo
-    # compute loss
-    # train, valid, test loss
-    # train, valid and test accuracy
-    # return test_acc, valid_acc, train_acc, train_loss, valid_loss, test_loss
+    # todo which metric do we use?
+    # valid_mrr = compute_mrr(z, data.val_edge_index, data.val_edge_type, data, model)
+    # test_mrr = compute_mrr(z, data.test_edge_index, data.test_edge_type, data, model)
+    # return valid_mrr, test_mrr
+    return auc
 
 
 def run_experiment(args):
@@ -94,44 +82,46 @@ def run_experiment(args):
         device = torch.device(device)
         print(f'Cuda available? {torch.cuda.is_available()}, Number of devices: {torch.cuda.device_count()}')
 
-        print('Start training')
-        experiment_logger = ExperimentLogger(args)
+    print('Start training')
+    experiment_logger = ExperimentLogger(args)
 
-        # evaluator = Evaluator(args)
+    # evaluator = Evaluator(args)
 
-        for run in range(args.runs):
-            data = get_data(args).to(device)
-            model = GAE(
-                RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
-                HetDistMultDecoder(num_relations=data.num_relations, hidden_channels=500),
-            ).to(device)
-            # model = get_model(args, data).to(device)
-            # model.reset_parameters()
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2),
-                                         eps=args.adam_eps, amsgrad=False, weight_decay=args.weight_decay)
-            # run_logger = RunLogger(run, model, args)
+    for run in range(args.runs):
+        data = get_data(args).to(device)
+        model = GAE(
+            RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
+            HetDistMultDecoder(num_relations=data.num_relations, hidden_channels=500),
+        ).to(device)
+        # model = get_model(args, data).to(device)
+        # model.reset_parameters()
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate,
+                                     betas=(args.adam_beta1, args.adam_beta2),
+                                     eps=args.adam_eps, amsgrad=False, weight_decay=args.weight_decay)
+        # run_logger = RunLogger(run, model, args)
 
-            for epoch in range(args.epochs):
-                loss = train(model, data, optimizer, device)
-                print(f'Epoch: {epoch:05d}, Loss: {loss:.4f}')
-                # if (epoch % 500) == 0:
-                valid_mrr, test_mrr = test(model, data)
-                print(f'Val MRR: {valid_mrr:.4f}, Test MRR: {test_mrr:.4f}')
-                # run_logger.update_per_epoch(**args) # todo
+        for epoch in range(args.epochs):
+            loss = train(model, data, optimizer, device)
+            print(f'Epoch: {epoch}, Loss: {loss:.4f}')
+            # if (epoch % 500) == 0:
 
-                # early stopping
-                # if run_logger.callback_early_stopping(epoch):
-                #     break
+            train_auc = test(model, data.train_data, device)
+            val_auc = test(model, data.val_data, device)
+            test_auc = test(model, data.test_data, device)
+            print(f'Train AUC: {train_auc}, Val AUC: {val_auc}, Test AUC: {test_auc}')
 
-            # loss_and_metrics_test = test(model, data, criterion, device, evaluator) # todo output
-            # run_logger.update_per_run(**args) # todo
-            # experiment_logger.add_run(run_logger)
-            # print(run_logger)
+            # todo which metric to use
+            # valid_mrr, test_mrr = test(model, data)
+            # print(f'Val MRR: {valid_mrr:.4f}, Test MRR: {test_mrr:.4f}')
+            # run_logger.update_per_epoch(**args) # todo
 
-        # experiment_logger.end_experiment()
+            # early stopping
+            # if run_logger.callback_early_stopping(epoch):
+            #     break
 
+        # loss_and_metrics_test = test(model, data, criterion, device, evaluator) # todo output
+        # run_logger.update_per_run(**args) # todo
+        # experiment_logger.add_run(run_logger)
+        # print(run_logger)
 
-
-
-
-
+    # experiment_logger.end_experiment()

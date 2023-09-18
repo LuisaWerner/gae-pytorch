@@ -56,7 +56,7 @@ class SubgraphSampler(object):
         if self.current_index <= self.num_batches:
             batch = deepcopy(self.data)
             # take the first batch_size links
-            edge_index = self.data.edge_label_index[:, self.e_id_start:self.e_id_start+self.batch_size]
+            edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start+self.batch_size]
             edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
 
             # keep the node ids of nodes in negative edge index
@@ -67,7 +67,6 @@ class SubgraphSampler(object):
                 edge_type = torch.cat([edge_type, edge_type])
 
             edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
-
             batch.edge_index = edge_index
             batch.edge_type = edge_type
 
