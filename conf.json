@@ -21,7 +21,7 @@
     "num_val": 0.2,
     "num_test": 0.2,
     "runs": 1,
-    "same_edge": ["author", "competitor"],
+    "same_edge": [],
     "seed": 1234,
     "wandb_label": "label",
     "wandb_entity": "entity",

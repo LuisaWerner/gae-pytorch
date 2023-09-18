@@ -4,6 +4,7 @@ from torch_geometric.transforms import RandomLinkSplit
 from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import remove_isolated_nodes
 from torch.nn.functional import one_hot
+from torch_geometric.utils import negative_sampling
 from torch_geometric.loader import LinkNeighborLoader
 from copy import deepcopy
 from torch_scatter import scatter
@@ -11,7 +12,7 @@ import torch_geometric
 from pathlib import Path
 from torch_geometric.data import HeteroData
 from typing import List, Optional, Union
-
+import math
 
 class SubgraphSampler(object):
     """
@@ -19,13 +20,31 @@ class SubgraphSampler(object):
     https: // pytorch - geometric.readthedocs.io / en / latest / _modules / torch_geometric / loader / dynamic_batch_sampler.html
     Makes edges based on edge index. Equal length of edge index per batch
     Problem: overlaps in nodes. Some nodes appear in multiple batches.
+    todo: put batch size in args and pass
     """
-    def __init__(self, data, batch_size):
+    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=True):
         self.batch_size = batch_size
         self.data = data
         self.current_index = 0
         self.e_id_start = 0
         self.num_batches = round(data.num_edges / self.batch_size)
+
+        if shuffle:
+            # shuffle the edge_index before splitting into batches
+            idx = torch.randperm(data.edge_index.shape[1])
+            self.data.edge_index = data.edge_index[:, idx]
+            self.data.edge_label_index = data.edge_label_index[:, idx]
+            self.data.edge_type = data.edge_type[idx]
+
+        if neg_sampling_per_type:
+            # sample per positive edge type link in edge index a negative edge
+            neg_edge_index = torch.zeros_like(data.edge_index)
+            for rel in torch.unique(data.edge_type):
+                pos = torch.where(torch.Tensor(data.edge_type == rel))[0]
+                edge_index_filtered = data.edge_index[:, pos]
+                neg_edge_index_type = negative_sampling(edge_index_filtered) # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
+                neg_edge_index[:, pos] = neg_edge_index_type
+            self.data.neg_edge_index = neg_edge_index
 
     def __iter__(self):
         return self
@@ -37,28 +56,68 @@ class SubgraphSampler(object):
         if self.current_index <= self.num_batches:
             batch = deepcopy(self.data)
             # take the first batch_size links
-            filtered_edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start+self.batch_size]
-            filtered_edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
-            # only keep nodes that are in subgraph
-            batch.edge_index, batch.edge_type, mask = remove_isolated_nodes(filtered_edge_index, filtered_edge_type, num_nodes=batch.num_nodes)
+            edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start+self.batch_size]
+            edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
+
+            # keep the node ids of nodes in negative edge index
+            if hasattr(batch, 'neg_edge_index'):
+                neg_edge_index = self.data.neg_edge_index[:,
+                                                self.e_id_start:self.e_id_start + self.batch_size]
+                edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
+                edge_type = torch.cat([edge_type, edge_type])
+
+            edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
+            batch.edge_index = edge_index
+            batch.edge_type = edge_type
+
+            batch.pos_edge_index = edge_index[:, :self.batch_size]
+            if hasattr(batch, 'neg_edge_index'):
+                batch.neg_edge_index = edge_index[:, self.batch_size:]
+
+            # put here label creation
+            neg_edge_label = torch.zeros(batch.neg_edge_index.shape[1], batch.num_relations)
+            pos_edge_label = one_hot(batch.edge_type[:self.batch_size], num_classes=batch.num_relations)
+            batch.edge_label = torch.cat([pos_edge_label, neg_edge_label])
+
             batch.x = batch.x[mask, :]
             batch.y = batch.y[mask]
             batch.num_nodes = sum(mask)
             batch.num_classes = self.data.num_classes
 
-            # todo question multi label: we should have duplicates in edge index with different values in edge type in multi data
-            # todo ground truth 3D tensor with edges types one hot encoded at edge_index (2D) position
-            # todo find a better way to do this without loop
-            # adj = torch.squeeze(torch_geometric.utils.to_dense_adj(batch.edge_index)).unsqueeze(2).repeat(1, 1, self.data.num_classes)
-            edge_type_onehot = one_hot(batch.edge_type, num_classes=self.data.num_classes)
-            edge_type_truth = torch.zeros([batch.num_nodes, batch.num_nodes, self.data.num_classes], dtype=torch.int64)
-            for _, i in enumerate(torch.unbind(batch.edge_index, dim=1)):
-                edge_type_truth[i,:] = edge_type_onehot[_]
-            # update = scatter(edge_type_truth, batch.edge_index, edge_type_onehot)
-            # edge_type_truth.index_put(torch.unbind(batch.edge_index, dim=1), edge_type_onehot, accumulate=True)
-            batch.edge_labels = edge_type_truth
             self.current_index += 1
             self.e_id_start += self.batch_size
+            return batch
+        raise StopIteration
+
+
+class MultiRelationalSampler(object):
+    """
+    The idea is to filter the graph by the edge_type and use these edge types as batches.
+    However, if the number of links per type is still too large (> maxbatchsize), several batches per types are made
+    # todo the number of edges might still be too large and return OOM, set a maximum batch size to solve this
+    """
+    def __init__(self, data):
+        self.data = data
+        self.current_type = 0
+        self.num_batches = self.data.num_relations
+
+    def __iter__(self):
+        return self
+
+    def __len__(self):
+        return self.data.num_relations
+
+    def __next__(self):
+        if self.current_type <= self.data.num_relations:
+            batch = deepcopy(self.data)
+            ids = torch.where(self.data.edge_type == self.current_type)[0]
+            filtered_edge_index = self.data.edge_label_index[:, ids]
+            filtered_edge_type = self.data.edge_type[ids]
+            batch.edge_label_index, batch.edge_type, mask = remove_isolated_nodes(filtered_edge_index, filtered_edge_type, num_nodes=self.data.num_nodes)
+            batch.x = batch.x[mask, :]
+            batch.y = batch.y[mask]
+            batch.num_nodes = sum(mask)
+            self.current_type += 1
             return batch
         raise StopIteration
 
@@ -108,7 +167,7 @@ def add_edge_type_dict(data):
     edge_type_dict = {}
     for k, item in enumerate(edge_types_str):
         edge_type_dict[k] = item
-    data.edge_type_dict = edge_type_dict
+    data._edge_type_dict = edge_type_dict
     return data
 
 
@@ -202,7 +261,7 @@ class WikiAlumniData:
         self.num_val = args.num_val
         self.num_test = args.num_test
         self.batch_size = args.batch_size
-        self.num_classes = args.num_classes
+        self.to_hetero = False
 
     def preprocess(self):
         try:
@@ -213,7 +272,8 @@ class WikiAlumniData:
             data = None
 
         data.x = data.x.type(torch.float32)
-        data.num_classes = self.num_classes
+        data.num_classes = int(len(torch.unique(data.y)))
+        data.num_relations = int(len(torch.unique(data.edge_type)))
 
         del data['tr_ent_idx']
         del data['val_ent_idx']
@@ -223,30 +283,33 @@ class WikiAlumniData:
         data = add_edge_type_dict(data)
 
         # create heterodata object
-        # hetero_data = HeteroData()
-        # for key, value in data.edge_type_dict.items():
-        #     hetero_data['node'].x = data.x
-        #     hetero_data['node'].num_nodes = data.num_nodes
-        #     hetero_data['node', value, 'node'].edge_index = data.edge_index[:, torch.where(data.edge_type==key)[0]]
-        # option2 :
-        # hetero_data = data.to_heterogeneous(edge_type=data.edge_type)
+        if self.to_hetero:
+            hetero_data = data.to_heterogeneous(edge_type=data.edge_type)
         
         # add new edges
-        # if len(self.same_edge) != 0:
-        #     data = add_edge_common(data, self.same_edge)
+        if len(self.same_edge) != 0:
+            data = add_edge_common(data, self.same_edge)
 
         # data = subgraph_by_edge_type(data, ["children", "parent"])
 
-        transform = RandomLinkSplit(is_undirected=True, num_val=0.1, num_test=0.3, add_negative_train_samples=False, edge_types=data.edge_type)
+        # this gives links without negative samples and keeps the edge type in edge_label
+        transform = RandomLinkSplit(is_undirected=False,
+                                    num_val=0.1,
+                                    num_test=0.3,
+                                    add_negative_train_samples=False,
+                                    neg_sampling_ratio=0.0)
         train_data, val_data, test_data = transform(data)
 
-        # dont know if this is correct
-        data.train_edge_index = train_data.edge_index
-        data.train_edge_type = train_data.edge_type
-        data.val_edge_index = val_data.edge_index
-        data.val_edge_type = val_data.edge_type
-        data.test_edge_index = test_data.edge_index
-        data.test_edge_type = test_data.edge_type
+        # don't know if this is correct
+        # todo is this even needed
+        # data.train_edge_index = train_data.edge_label_index
+        # data.train_edge_label = train_data.edge_label
+        # data.val_edge_index = val_data.edge_index
+        # data.val_edge_label = val_data.edge_label
+        # data.test_edge_index = test_data.edge_label_index
+        # data.test_edge_label = test_data.edge_label
 
-
+        data.train_data = train_data
+        data.val_data = val_data
+        data.test_data = test_data
         return data

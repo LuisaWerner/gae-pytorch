@@ -109,11 +109,11 @@ class RGCNEncoder(torch.nn.Module):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
 
-    def forward(self, x,  edge_index, edge_type):
-        x = self.conv1(x, edge_index, edge_type).relu_()
-        x = F.dropout(x, p=0.2, training=self.training)
-        x = self.conv2(x, edge_index, edge_type)
-        return x
+    def forward(self, batch):
+        z = self.conv1(batch.x, batch.edge_index, batch.edge_type).relu_()
+        z = F.dropout(z, p=0.2, training=self.training) # todo dropout rate as argument
+        z = self.conv2(z, batch.edge_index, batch.edge_type)
+        return z
 
 
 class DistMultDecoder(torch.nn.Module):
@@ -129,3 +129,30 @@ class DistMultDecoder(torch.nn.Module):
         z_src, z_dst = z[edge_index[0]], z[edge_index[1]]
         rel = self.rel_emb[edge_type]
         return torch.sum(z_src * rel * z_dst, dim=1)
+
+class HetDistMultDecoder(torch.nn.Module):
+    """
+    Decodes for multiple edge types
+    We need a Parameter that decodes for each type separately
+    """
+
+    def __init__(self, num_relations, hidden_channels):
+        super().__init__()
+        self.rel_emb = Parameter(torch.empty(hidden_channels, num_relations))
+        self.reset_parameters()
+        self.num_relations = num_relations
+
+    def reset_parameters(self):
+        torch.nn.init.xavier_uniform_(self.rel_emb)
+
+    def forward(self, z, batch):
+        z_src, z_dst = z[batch.pos_edge_index[0]], z[batch.pos_edge_index[1]]
+        out = torch.matmul(z_src * z_dst, self.rel_emb)
+
+        if hasattr(batch, 'neg_edge_index'):
+            z_src_neg, z_dst_neg = z[batch.neg_edge_index[0]], z[batch.neg_edge_index[1]]
+            neg_out = torch.matmul(z_src_neg * z_dst_neg, self.rel_emb)
+            out = torch.cat([out, neg_out])
+
+        return out
+
