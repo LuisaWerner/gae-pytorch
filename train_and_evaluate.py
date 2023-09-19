@@ -2,7 +2,7 @@ import torch.nn.functional as F
 import torch
 import torch_geometric
 import torch.backends.mps
-from model import get_model, RGCNEncoder, DistMultDecoder, HetDistMultDecoder
+from model import get_model, RGCNEncoder, DistMultDecoder, HetDistMultDecoder, MLPEncoder
 from preprocess import get_data
 from torch_geometric.nn import GAE
 from torch_geometric.utils import negative_sampling
@@ -12,9 +12,7 @@ from preprocess import SubgraphSampler
 from sklearn.metrics import roc_auc_score
 
 
-
 def train(model, data, optimizer, device):
-
     model.train()
     optimizer.zero_grad()
 
@@ -92,7 +90,8 @@ def run_experiment(args):
     for run in range(args.runs):
         data = get_data(args).to(device)
         model = GAE(
-            RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
+            # RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
+            MLPEncoder(500),
             HetDistMultDecoder(num_relations=data.num_relations, hidden_channels=500),
         ).to(device)
         # model = get_model(args, data).to(device)

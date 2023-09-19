@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as pyg
 from torch_geometric.nn.conv import GCNConv, RGCNConv
+from torch_geometric.nn import Linear
 from torch.nn import Parameter
 from gae.layers import GraphConvolution
 
@@ -113,6 +114,30 @@ class RGCNEncoder(torch.nn.Module):
         z = self.conv1(batch.x, batch.edge_index, batch.edge_type).relu_()
         z = F.dropout(z, p=0.2, training=self.training) # todo dropout rate as argument
         z = self.conv2(z, batch.edge_index, batch.edge_type)
+        return z
+
+class MLPEncoder(torch.nn.Module):
+    def __init__(self, hidden_channels):
+        super().__init__()
+        self.in_channels = 300
+        self.linear1 = Linear(self.in_channels, hidden_channels)
+        self.linear2 = Linear(hidden_channels, hidden_channels)
+        self.linear3 = Linear(hidden_channels, hidden_channels)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # todo layers in a loop
+        self.linear1.reset_parameters()
+        self.linear2.reset_parameters()
+        self.linear3.reset_parameters()
+
+
+    def forward(self, batch):
+        z = self.linear1(batch.x).relu_()
+        z = F.dropout(z, p=0.2, training=self.training) # todo dropout rate as argument
+        z = self.linear2(z).relu_()
+        z = F.dropout(z, p=0.2, training=self.training)
+        z = self.linear3(z).relu_()
         return z
 
 
