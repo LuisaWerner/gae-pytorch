@@ -1,5 +1,6 @@
 import torch.nn.functional as F
 import torch
+from tqdm import tqdm
 import torch_geometric
 import torch.backends.mps
 from model import get_model, RGCNEncoder, DistMultDecoder, HetDistMultDecoder, MLPEncoder
@@ -21,7 +22,7 @@ def train(model, data, optimizer, device):
     regularize = False  # todo
 
     total_loss = 0
-    for i_batch, batch in enumerate(train_loader):
+    for i_batch, batch in enumerate(tqdm(train_loader)):
         batch.to(device)
         z = model.encode(batch)
         out = model.decode(z, batch)  # pos and neg edges
@@ -35,8 +36,6 @@ def train(model, data, optimizer, device):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
         optimizer.step()
-        if i_batch % 10 == 0:
-            print(f'Training: Batch {i_batch} of {len(train_loader)}')
 
     # todo we do not even need a return statement?
     return float(total_loss)
@@ -49,13 +48,11 @@ def test(model, data, device):
 
     outs = []
     ground_truths = []
-    for i_batch, batch in enumerate(loader):
+    for i_batch, batch in enumerate(tqdm(loader)):
         batch.to(device)
         z = model.encode(batch)
         outs.append(model.decode(z, batch).sigmoid())  # todo is sigmoid correct  ?
         ground_truths.append(batch.edge_label)
-        if i_batch % 10 == 0:
-            print(f'Evaluating: Batch {i_batch} of {len(loader)}')
 
     all_outs = torch.cat(outs, dim=0)
     all_ground_truth = torch.cat(ground_truths, dim=0)
@@ -68,7 +65,7 @@ def test(model, data, device):
     return auc
 
 
-def run_experiment(args):
+def run_conf(args):
     """
     helpful article on multi-label classification
     https://www.kdnuggets.com/2023/03/multilabel-nlp-analysis-class-imbalance-loss-function-approaches.html#:~:text=In%20the%20context%20of%20using,loss%20as%20the%20loss%20function.
@@ -82,30 +79,22 @@ def run_experiment(args):
         device = torch.device(device)
         print(f'Cuda available? {torch.cuda.is_available()}, Number of devices: {torch.cuda.device_count()}')
 
-    print('Start training')
-    experiment_logger = ExperimentLogger(args)
-
-    # evaluator = Evaluator(args)
-
+    # experiment_logger = ExperimentLogger(args)
     for run in range(args.runs):
         data = get_data(args).to(device)
         model = GAE(
-            # RGCNEncoder(data.num_nodes, 500, num_relations=data.num_relations),
-            MLPEncoder(500),
-            HetDistMultDecoder(num_relations=data.num_relations, hidden_channels=500),
+            encoder=MLPEncoder(args),
+            decoder=HetDistMultDecoder(num_relations=data.num_relations, hidden_channels=args.hidden_dim),
         ).to(device)
-        # model = get_model(args, data).to(device)
-        # model.reset_parameters()
         optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate,
                                      betas=(args.adam_beta1, args.adam_beta2),
                                      eps=args.adam_eps, amsgrad=False, weight_decay=args.weight_decay)
+
         # run_logger = RunLogger(run, model, args)
-
         for epoch in range(args.epochs):
+            print(f'Run {run}, Epoch {epoch}')
             loss = train(model, data, optimizer, device)
-            print(f'Epoch: {epoch}, Loss: {loss:.4f}')
-            # if (epoch % 500) == 0:
-
+            print(f'Loss: {loss:.4f}')
             train_auc = test(model, data.train_data, device)
             val_auc = test(model, data.val_data, device)
             test_auc = test(model, data.test_data, device)
@@ -120,7 +109,6 @@ def run_experiment(args):
             # if run_logger.callback_early_stopping(epoch):
             #     break
 
-        # loss_and_metrics_test = test(model, data, criterion, device, evaluator) # todo output
         # run_logger.update_per_run(**args) # todo
         # experiment_logger.add_run(run_logger)
         # print(run_logger)

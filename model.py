@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as pyg
+import torch_geometric.nn.models.autoencoder
 from torch_geometric.nn.conv import GCNConv, RGCNConv
 from torch_geometric.nn import Linear
 from torch.nn import Parameter
 from gae.layers import GraphConvolution
+from torch_geometric.nn.models.autoencoder import GAE
 
 
 def get_model(args, data):
@@ -22,39 +24,6 @@ def get_model(args, data):
     except AttributeError:
         raise NotImplementedError(msg)
     return _class(args, data)
-
-
-class GCNModelVAE(nn.Module):
-    def __init__(self, args, data):
-        super(GCNModelVAE, self).__init__()
-        self.hidden_dim = args.hidden_dim
-        self.dropout = args.dropout
-        self.gc1 = GCNConv(-1, self.hidden_dim)
-        self.gc2 = GCNConv(self.hidden_dim, self.hidden_dim)
-        self.gc3 = GCNConv(self.hidden_dim, self.hidden_dim)
-        # self.gc1 = GraphConvolution(-1, self.hidden_dim, self.dropout, act=F.relu)
-        # self.gc2 = GraphConvolution(self.hidden_dim, self.hidden_dim, self.dropout, act=self.act)
-        # self.gc3 = GraphConvolution(self.hidden_dim, self.hidden_dim, self.dropout, act=self.act)
-        self.dc = InnerProductDecoder(args)
-
-    def encode(self, x, edge_index):
-        z = F.dropout(x, self.dropout, self.training)
-        z = self.gc1(z, edge_index)
-        z = F.dropout(z, self.dropout, self.training)
-        return self.gc2(z, edge_index), self.gc3(z, edge_index)
-
-    def reparameterize(self, mu, logvar):
-        if self.training:
-            std = torch.exp(logvar)
-            eps = torch.randn_like(std) # random numbers of std's shape with mean 0 and variance 1
-            return eps.mul(std).add_(mu)
-        else:
-            return mu
-
-    def forward(self, x, edge_index):
-        mu, logvar = self.encode(x, edge_index)
-        z = self.reparameterize(mu, logvar)
-        return self.dc(z), mu, logvar
 
 
 class LinearClassifier(nn.Module):
@@ -89,11 +58,12 @@ class InnerProductDecoder(nn.Module):
         self.classifier = LinearClassifier(args)
 
     def forward(self, z):
-        z = F.dropout(z, self.dropout, training=self.training) # why dropout in decoder?
+        z = F.dropout(z, self.dropout, training=self.training)  # why dropout in decoder?
         adj = self.act(torch.mm(z, z.t()))
         adj_3D = adj.unsqueeze(2).repeat(1, 1, self.num_classes)
         a_hat = self.classifier(adj_3D)
         return F.sigmoid(a_hat)
+
 
 class RGCNEncoder(torch.nn.Module):
     def __init__(self, num_nodes, hidden_channels, num_relations):
@@ -112,17 +82,18 @@ class RGCNEncoder(torch.nn.Module):
 
     def forward(self, batch):
         z = self.conv1(batch.x, batch.edge_index, batch.edge_type).relu_()
-        z = F.dropout(z, p=0.2, training=self.training) # todo dropout rate as argument
+        z = F.dropout(z, p=0.2, training=self.training)  # todo dropout rate as argument
         z = self.conv2(z, batch.edge_index, batch.edge_type)
         return z
 
+
 class MLPEncoder(torch.nn.Module):
-    def __init__(self, hidden_channels):
+    def __init__(self, args):
         super().__init__()
-        self.in_channels = 300
-        self.linear1 = Linear(self.in_channels, hidden_channels)
-        self.linear2 = Linear(hidden_channels, hidden_channels)
-        self.linear3 = Linear(hidden_channels, hidden_channels)
+        self.dropout = args.dropout
+        self.linear1 = Linear(-1, args.hidden_dim)
+        self.linear2 = Linear(args.hidden_dim, args.hidden_dim)
+        self.linear3 = Linear(args.hidden_dim, args.hidden_dim)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -131,12 +102,11 @@ class MLPEncoder(torch.nn.Module):
         self.linear2.reset_parameters()
         self.linear3.reset_parameters()
 
-
     def forward(self, batch):
         z = self.linear1(batch.x).relu_()
-        z = F.dropout(z, p=0.2, training=self.training) # todo dropout rate as argument
+        z = F.dropout(z, p=self.dropout, training=self.training)  # todo dropout rate as argument
         z = self.linear2(z).relu_()
-        z = F.dropout(z, p=0.2, training=self.training)
+        z = F.dropout(z, p=self.dropout, training=self.training)
         z = self.linear3(z).relu_()
         return z
 
@@ -154,6 +124,7 @@ class DistMultDecoder(torch.nn.Module):
         z_src, z_dst = z[edge_index[0]], z[edge_index[1]]
         rel = self.rel_emb[edge_type]
         return torch.sum(z_src * rel * z_dst, dim=1)
+
 
 class HetDistMultDecoder(torch.nn.Module):
     """
@@ -180,4 +151,3 @@ class HetDistMultDecoder(torch.nn.Module):
             out = torch.cat([out, neg_out])
 
         return out
-

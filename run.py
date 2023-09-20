@@ -1,7 +1,7 @@
 import argparse
 import json
 import wandb
-from train_and_evaluate import run_experiment
+from train_and_evaluate import run_conf
 
 
 class ExperimentConf(object):
@@ -27,7 +27,7 @@ def run_experiments(config_file):
         else:
             wandb.init(project=experiment_conf.wandb_project, entity=experiment_conf.wandb_entity,
                        tags=[experiment_conf.wandb_label], config=conf, mode='disabled')
-        run_experiment(experiment_conf)
+        run_conf(experiment_conf)
         wandb.finish()
 
 
