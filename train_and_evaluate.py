@@ -11,6 +11,7 @@ from utils import compute_mrr
 from logger import *
 from preprocess import SubgraphSampler
 from sklearn.metrics import roc_auc_score
+from utils import calculate_loss
 
 
 def train(model, data, optimizer, device):
@@ -25,13 +26,8 @@ def train(model, data, optimizer, device):
     for i_batch, batch in enumerate(tqdm(train_loader)):
         batch.to(device)
         z = model.encode(batch)
-        out = model.decode(z, batch)  # pos and neg edges
-        loss = F.binary_cross_entropy_with_logits(out, batch.edge_label)
-
-        if regularize:
-            reg_loss = z.pow(2).mean() + model.decoder.rel_emb.pow(2).mean()  # regularization # todo do we need this?
-            loss = loss + 1e-2 * reg_loss
-
+        out = model.decode(z, batch)
+        loss = calculate_loss(out, batch)
         total_loss += loss
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
