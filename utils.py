@@ -5,41 +5,7 @@ from torch_geometric.transforms import BaseTransform, RandomLinkSplit
 from torch_geometric.utils import remove_isolated_nodes
 from copy import deepcopy
 from pathlib import Path
-from torch import Tensor
-import torch.nn.functional as F
 
-
-def calculate_loss(out, batch, regularize=False, mode='MSE'):
-    if mode == 'BCE':
-        loss = F.binary_cross_entropy_with_logits(out, batch.edge_label)
-
-    elif mode == 'MSE':
-        loss = torch.nn.functional.mse_loss(out, batch.edge_label)
-
-    elif mode == 'L1':
-        loss = torch.nn.functional.l1_loss(out, batch.edge_label)
-
-    elif mode == 'MSML':
-        loss = F.multilabel_soft_margin_loss(out, batch.edge_label)
-
-    else:
-        loss = 0
-        Exception(f'Invalid mode: {mode}')
-
-    # pos_weight = torch.cat([torch.ones_like(batch.pos_edge_index[1]), torch.zeros_like(batch.neg_edge_index[1])])
-    # bce_weight = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    # loss2 = torch.nn.BCEWithLogitsLoss(out, batch.edge_label)
-    # l2 = F.multilabel_soft_margin_loss(out, batch.edge_label)
-    # loss3 = torch.nn.MultiLabelSoftMarginLoss(out, batch.edge_label)
-
-    # categorical classification only in a loop per type ?
-    # weight classes ?
-    # aggregate loss over batches
-
-    # if regularize:
-    #     reg_loss = out.pow(2).mean() + model.decoder.rel_emb.pow(2).mean()  # regularization # todo do we need this?
-    #     loss = loss + 1e-2 * reg_loss
-    return loss
 
 @torch.no_grad()
 def compute_rank(ranks):
