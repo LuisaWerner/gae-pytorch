@@ -1,18 +1,25 @@
-# gae-pytorch
-Graph Auto-Encoder in PyTorch
+# Ontology-enhanced link prediction on featured knowledge graphs 
 
-This is a PyTorch implementation of the Variational Graph Auto-Encoder model described in the paper:
- 
-T. N. Kipf, M. Welling, [Variational Graph Auto-Encoders](https://arxiv.org/abs/1611.07308), NIPS Workshop on Bayesian Deep Learning (2016)
+** still in progress ** 
 
-The code in this repo is based on or refers to https://github.com/tkipf/gae, https://github.com/tkipf/pygcn and https://github.com/vmasrani/gae_in_pytorch.
+Forked from [gae-pytorch](https://github.com/zfjsail/gae-pytorch)
+The goal is to do link prediction in an encoder-decoder manner based on the vector representations in the graph data (edges and node features). 
+Then the predictions will be used as groundings for ontological knowledge that should be enforced with an residual layer. 
 
-### Requirements
-- Python 3.11.0
-- install requirements via ```
-pip install -r requirements.txt``` 
+The `examples` directory contains several SOTA link prediction model examples in PyG 
+The `gae` directory contains the original GAE code 
 
-### How to run
-```bash
-python gae/train.py
-```
+## How to run 
+1. At first, go to the project directory 
+```cd knowledge_GAE```
+
+2. and create the directory to store the data
+```mkdir WikiAlumni```
+
+3. load the dataset `raw.pkl` from [here](https://gitlab.inria.fr/luwerner/wikialumni/-/blob/master/WikiAlumniPyG/raw.pkl) and put it in the directory.
+
+4. Install the requirements ```pip install -r requirements.txt```
+
+5. Adapt the parameters in the `conf.json` file
+
+6. Execute `run.py --conf.json`
