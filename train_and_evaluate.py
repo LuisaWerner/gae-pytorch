@@ -18,7 +18,7 @@ def train(model, data, optimizer, device):
     optimizer.zero_grad()
 
     # do negative sampling here and then sample per batch
-    train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=True)
+    train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=False)
     regularize = False  # todo
 
     total_loss = 0

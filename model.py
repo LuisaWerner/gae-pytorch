@@ -134,7 +134,7 @@ class HetDistMultDecoder(torch.nn.Module):
 
     def __init__(self, num_relations, hidden_channels):
         super().__init__()
-        self.rel_emb = Parameter(torch.empty(hidden_channels, num_relations))
+        self.rel_emb = Parameter(torch.empty(hidden_channels, num_relations+1)) #
         self.reset_parameters()
         self.num_relations = num_relations
 

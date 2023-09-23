@@ -12,7 +12,7 @@ class SubgraphSampler(object):
     Problem: overlaps in nodes. Some nodes appear in multiple batches.
     todo: put batch size in args and pass
     """
-    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=True, drop_last=True):
+    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=False, drop_last=True):
         self.batch_size = batch_size
         self.data = data
         self.current_index = 0
@@ -36,7 +36,10 @@ class SubgraphSampler(object):
                 edge_index_filtered = data.edge_index[:, pos]
                 neg_edge_index_type = negative_sampling(edge_index_filtered) # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
                 neg_edge_index[:, pos] = neg_edge_index_type
-            self.data.neg_edge_index = neg_edge_index
+            self.data['neg_edge_index'] = neg_edge_index
+        else:
+            self.data['neg_edge_index'] = negative_sampling(data.edge_index)
+
 
     def __iter__(self):
         return self
@@ -56,7 +59,9 @@ class SubgraphSampler(object):
                 neg_edge_index = self.data.neg_edge_index[:,
                                                 self.e_id_start:self.e_id_start + self.batch_size]
                 edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
-                edge_type = torch.cat([edge_type, edge_type])
+                # edge_type = torch.cat([edge_type, edge_type])
+                neg_type = torch.ones_like(edge_type) * (batch.num_relations) # added additional type for "we don't know type"
+                edge_type = torch.cat([edge_type, neg_type])
 
             edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
             # batch = torch_geometric.data.Data()
@@ -68,10 +73,11 @@ class SubgraphSampler(object):
                 batch['neg_edge_index'] = edge_index[:, self.batch_size:]
 
             # put here label creation
-            neg_edge_label = torch.zeros(batch.neg_edge_index.shape[1], batch.num_relations)
-            pos_edge_label = one_hot(batch.edge_type[:self.batch_size], num_classes=batch.num_relations)
-            batch['edge_label'] = torch.cat([pos_edge_label, neg_edge_label])
+            # neg_edge_label = torch.zeros(batch.neg_edge_index.shape[1], batch.num_relations)
+            # pos_edge_label = one_hot(batch.edge_type[:self.batch_size], num_classes=batch.num_relations)
+            # batch['edge_label'] = torch.cat([pos_edge_label, neg_edge_label]) # not needed anymore in this setting
 
+            batch['edge_label'] = one_hot(batch.edge_type, num_classes=batch.num_relations + 1)
             batch['x'] = batch.x[mask, :]
             batch['y'] = batch.y[mask]
             batch['num_nodes'] = sum(mask)
