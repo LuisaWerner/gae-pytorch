@@ -12,6 +12,7 @@ class SubgraphSampler(object):
     Problem: overlaps in nodes. Some nodes appear in multiple batches.
     todo: put batch size in args and pass
     """
+
     def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=False, drop_last=True):
         self.batch_size = batch_size
         self.data = data
@@ -34,12 +35,12 @@ class SubgraphSampler(object):
             for rel in torch.unique(data.edge_type):
                 pos = torch.where(torch.Tensor(data.edge_type == rel))[0]
                 edge_index_filtered = data.edge_index[:, pos]
-                neg_edge_index_type = negative_sampling(edge_index_filtered) # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
+                neg_edge_index_type = negative_sampling(
+                    edge_index_filtered)  # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
                 neg_edge_index[:, pos] = neg_edge_index_type
             self.data['neg_edge_index'] = neg_edge_index
         else:
             self.data['neg_edge_index'] = negative_sampling(data.edge_index)
-
 
     def __iter__(self):
         return self
@@ -51,16 +52,17 @@ class SubgraphSampler(object):
         if self.current_index <= self.num_batches:
             batch = deepcopy(self.data)
             # take the first batch_size links
-            edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start+self.batch_size]
-            edge_type = self.data.edge_type[self.e_id_start:self.e_id_start+self.batch_size]
+            edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start + self.batch_size]
+            edge_type = self.data.edge_type[self.e_id_start:self.e_id_start + self.batch_size]
 
             # keep the node ids of nodes in negative edge index
             if hasattr(batch, 'neg_edge_index'):
                 neg_edge_index = self.data.neg_edge_index[:,
-                                                self.e_id_start:self.e_id_start + self.batch_size]
+                                 self.e_id_start:self.e_id_start + self.batch_size]
                 edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
                 # edge_type = torch.cat([edge_type, edge_type])
-                neg_type = torch.ones_like(edge_type) * (batch.num_relations) # added additional type for "we don't know type"
+                neg_type = torch.ones_like(edge_type) * (
+                    batch.num_relations)  # added additional type for "we don't know type"
                 edge_type = torch.cat([edge_type, neg_type])
 
             edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
@@ -133,7 +135,7 @@ class WikiAlumniData:
         # create heterodata object
         if self.to_hetero:
             hetero_data = data.to_heterogeneous(edge_type=data.edge_type)
-        
+
         # add new edges
         if len(self.same_edge) != 0:
             data = add_edge_common(data, self.same_edge)
