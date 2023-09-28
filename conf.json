@@ -17,6 +17,7 @@
     "mps": false,
     "learning_rate": 0.01,
     "model": "GCNModelVAE",
+    "neg_sampling_ratio": 0.8,
     "num_classes": 29,
     "num_val": 0.2,
     "num_test": 0.2,

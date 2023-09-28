@@ -15,11 +15,13 @@ class SubgraphSampler(object):
 
     def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=False, drop_last=True):
         self.batch_size = batch_size
+        self.num_neg_samples = math.floor(data.neg_sampling_ratio * data.edge_index.shape[1])
         self.data = data
         self.current_index = 0
         self.e_id_start = 0
         self.num_batches = math.floor(data.num_edges / self.batch_size) if drop_last \
             else math.ceil(data.num_edges / self.batch_size)
+        self.neg_batch_size = math.floor(self.num_neg_samples/self.num_batches)
 
         if shuffle:
             # shuffle the edge_index before splitting into batches
@@ -38,9 +40,9 @@ class SubgraphSampler(object):
                 neg_edge_index_type = negative_sampling(
                     edge_index_filtered)  # , data.num_nodes, num_neg_samples=len(data.train_edge_index[1]))
                 neg_edge_index[:, pos] = neg_edge_index_type
-            self.data['neg_edge_index'] = neg_edge_index
+            self.data['neg_edge_index'] = neg_edge_index[:, :self.num_neg_samples]
         else:
-            self.data['neg_edge_index'] = negative_sampling(data.edge_index)
+            self.data['neg_edge_index'] = negative_sampling(data.edge_index)[:, :self.num_neg_samples]
 
     def __iter__(self):
         return self
@@ -58,10 +60,10 @@ class SubgraphSampler(object):
             # keep the node ids of nodes in negative edge index
             if hasattr(batch, 'neg_edge_index'):
                 neg_edge_index = self.data.neg_edge_index[:,
-                                 self.e_id_start:self.e_id_start + self.batch_size]
+                                 self.e_id_start:self.e_id_start + self.neg_batch_size]
                 edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
                 # edge_type = torch.cat([edge_type, edge_type])
-                neg_type = torch.ones_like(edge_type) * (
+                neg_type = torch.ones(neg_edge_index.shape[1], dtype=torch.int64) * (
                     batch.num_relations)  # added additional type for "we don't know type"
                 edge_type = torch.cat([edge_type, neg_type])
 
@@ -72,12 +74,7 @@ class SubgraphSampler(object):
 
             batch['pos_edge_index'] = edge_index[:, :self.batch_size]
             if hasattr(batch, 'neg_edge_index'):
-                batch['neg_edge_index'] = edge_index[:, self.batch_size:]
-
-            # put here label creation
-            # neg_edge_label = torch.zeros(batch.neg_edge_index.shape[1], batch.num_relations)
-            # pos_edge_label = one_hot(batch.edge_type[:self.batch_size], num_classes=batch.num_relations)
-            # batch['edge_label'] = torch.cat([pos_edge_label, neg_edge_label]) # not needed anymore in this setting
+                batch['neg_edge_index'] = edge_index[:, self.neg_batch_size:]
 
             batch['edge_label'] = one_hot(batch.edge_type, num_classes=batch.num_relations + 1)
             batch['x'] = batch.x[mask, :]
@@ -104,6 +101,7 @@ class WikiAlumniData:
         self.num_val = args.num_val
         self.num_test = args.num_test
         self.to_hetero = False
+        self.neg_sampling_ratio = args.neg_sampling_ratio
 
     def preprocess(self):
         """
@@ -122,6 +120,7 @@ class WikiAlumniData:
             data = None
 
         data['x'] = data.x.type(torch.float32)
+        data['neg_sampling_ratio'] = self.neg_sampling_ratio
         data['num_classes'] = int(len(torch.unique(data.y)))
         data['num_relations'] = int(len(torch.unique(data.edge_type)))
 

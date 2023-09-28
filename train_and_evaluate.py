@@ -42,7 +42,7 @@ def train(model, data, optimizer, device):
 
 
 @torch.no_grad()
-def test(model, data, device):
+def test(model, data, device, args):
     loader = SubgraphSampler(data, shuffle=False, neg_sampling_per_type=True)
     model.eval()
 
