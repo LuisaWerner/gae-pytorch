@@ -13,12 +13,12 @@ from preprocess import SubgraphSampler
 from sklearn.metrics import roc_auc_score
 
 
-def train(model, data, optimizer, device):
+def train(model, data, optimizer, device, args):
     model.train()
     optimizer.zero_grad()
 
     # do negative sampling here and then sample per batch
-    train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=False)
+    train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=False, neg_sampling_ratio=args.neg_sampling_ratio)
     regularize = False  # todo
 
     total_loss = 0
@@ -28,7 +28,7 @@ def train(model, data, optimizer, device):
         out = model.decode(z, batch)  # pos and neg edges
         loss = F.binary_cross_entropy_with_logits(out, batch.edge_label)
 
-        if regularize:
+        if args.regularize:
             reg_loss = z.pow(2).mean() + model.decoder.rel_emb.pow(2).mean()  # regularization # todo do we need this?
             loss = loss + 1e-2 * reg_loss
 
@@ -43,7 +43,7 @@ def train(model, data, optimizer, device):
 
 @torch.no_grad()
 def test(model, data, device, args):
-    loader = SubgraphSampler(data, shuffle=False, neg_sampling_per_type=True)
+    loader = SubgraphSampler(data, shuffle=False, neg_sampling_per_type=False, neg_sampling_ratio=args.neg_sampling_ratio)
     model.eval()
 
     outs = []
@@ -93,11 +93,11 @@ def run_conf(args):
         # run_logger = RunLogger(run, model, args)
         for epoch in range(args.epochs):
             print(f'Run {run}, Epoch {epoch}')
-            loss = train(model, data, optimizer, device)
+            loss = train(model, data, optimizer, device, args)
             print(f'Loss: {loss:.4f}')
-            train_auc = test(model, data.train_data, device)
-            val_auc = test(model, data.val_data, device)
-            test_auc = test(model, data.test_data, device)
+            train_auc = test(model, data.train_data, device, args)
+            val_auc = test(model, data.val_data, device, args)
+            test_auc = test(model, data.test_data, device, args)
             print(f'Train AUC: {train_auc}, Val AUC: {val_auc}, Test AUC: {test_auc}')
 
             # todo which metric to use

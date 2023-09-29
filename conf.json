@@ -21,6 +21,7 @@
     "num_classes": 29,
     "num_val": 0.2,
     "num_test": 0.2,
+    "regularize": false,
     "runs": 1,
     "same_edge": [],
     "seed": 1234,

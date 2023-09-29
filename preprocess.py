@@ -1,7 +1,53 @@
 from utils import *
 import math
+from copy import copy
 from torch_geometric.utils import one_hot, negative_sampling
-from torch_geometric.transforms import RandomLinkSplit
+# from torch_geometric.transforms import RandomLinkSplit
+
+
+def shuffle_edges(data):
+    idx = torch.randperm(data.edge_index.shape[1])
+    data['edge_index'] = data.edge_index[:, idx]
+    data['edge_type'] = data.edge_type[idx]
+    if hasattr(data, 'edge_label_index'):
+        data['edge_label_index'] = data.edge_label_index[:, idx]
+    if hasattr(data, 'edge_label'):
+        data['edge_label'] = data.edge_label[idx]
+    return data
+
+
+class RandomLinkSplit(object):
+    def __init__(self, num_val: float = 0.1, num_test: float = 0.1):
+        assert num_val + num_test < 1.0
+        self.num_val = num_val
+        self.num_test = num_test
+
+    def __call__(self, data):
+        train_data, val_data, test_data = copy(data), copy(data), copy(data)
+
+        perm = torch.randperm(data.edge_index.size(1))
+
+        num_val = int(self.num_val * perm.numel())
+        num_test = int(self.num_test * perm.numel())
+
+        num_train = perm.numel() - num_val - num_test
+        if num_train <= 0:
+            raise ValueError("Insufficient number of edges for training")
+
+        train_edges = perm[:num_train]
+        val_edges = perm[num_train:num_train + num_val]
+        test_edges = perm[num_train + num_val:]
+
+        train_data['edge_index'] = data.edge_index[:, train_edges]
+        val_data['edge_index'] = data.edge_index[:, val_edges]
+        test_data['edge_index'] = data.edge_index[:, test_edges]
+
+        if hasattr(data, 'edge_type'):
+            train_data['edge_type'] = data.edge_type[train_edges]
+            val_data['edge_type'] = data.edge_type[val_edges]
+            test_data['edge_type'] = data.edge_type[test_edges]
+
+        return train_data, val_data, test_data
 
 
 class SubgraphSampler(object):
@@ -10,12 +56,11 @@ class SubgraphSampler(object):
     https: // pytorch - geometric.readthedocs.io / en / latest / _modules / torch_geometric / loader / dynamic_batch_sampler.html
     Makes edges based on edge index. Equal length of edge index per batch
     Problem: overlaps in nodes. Some nodes appear in multiple batches.
-    todo: put batch size in args and pass
     """
 
-    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_per_type=False, drop_last=True):
+    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_ratio=1.0, neg_sampling_per_type=False, drop_last=True):
         self.batch_size = batch_size
-        self.num_neg_samples = math.floor(data.neg_sampling_ratio * data.edge_index.shape[1])
+        self.num_neg_samples = math.floor(neg_sampling_ratio * data.edge_index.shape[1])
         self.data = data
         self.current_index = 0
         self.e_id_start = 0
@@ -24,12 +69,7 @@ class SubgraphSampler(object):
         self.neg_batch_size = math.floor(self.num_neg_samples/self.num_batches)
 
         if shuffle:
-            # shuffle the edge_index before splitting into batches
-            idx = torch.randperm(data.edge_index.shape[1])
-            self.data['edge_index'] = data.edge_index[:, idx]
-            self.data['edge_type'] = data.edge_type[idx]
-            self.data['edge_label_index'] = data.edge_label_index[:, idx]
-            self.data['edge_label'] = data.edge_label[idx]
+            data = shuffle_edges(data)
 
         if neg_sampling_per_type:
             # sample per positive edge type link in edge index a negative edge
@@ -59,22 +99,17 @@ class SubgraphSampler(object):
 
             # keep the node ids of nodes in negative edge index
             if hasattr(batch, 'neg_edge_index'):
-                neg_edge_index = self.data.neg_edge_index[:,
-                                 self.e_id_start:self.e_id_start + self.neg_batch_size]
+                neg_edge_index = self.data.neg_edge_index[:, self.e_id_start:self.e_id_start + self.neg_batch_size]
+                neg_edge_type = torch.ones(neg_edge_index.shape[1], dtype=torch.int64) * (batch.num_relations)
                 edge_index = torch.cat([neg_edge_index, edge_index], dim=1)
-                # edge_type = torch.cat([edge_type, edge_type])
-                neg_type = torch.ones(neg_edge_index.shape[1], dtype=torch.int64) * (
-                    batch.num_relations)  # added additional type for "we don't know type"
-                edge_type = torch.cat([edge_type, neg_type])
+                edge_type = torch.cat([edge_type, neg_edge_type])
 
             edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=batch.num_nodes)
-            # batch = torch_geometric.data.Data()
             batch['edge_index'] = edge_index
             batch['edge_type'] = edge_type
 
             batch['pos_edge_index'] = edge_index[:, :self.batch_size]
-            if hasattr(batch, 'neg_edge_index'):
-                batch['neg_edge_index'] = edge_index[:, self.neg_batch_size:]
+            batch['neg_edge_index'] = edge_index[:, self.batch_size:]
 
             batch['edge_label'] = one_hot(batch.edge_type, num_classes=batch.num_relations + 1)
             batch['x'] = batch.x[mask, :]
@@ -101,7 +136,6 @@ class WikiAlumniData:
         self.num_val = args.num_val
         self.num_test = args.num_test
         self.to_hetero = False
-        self.neg_sampling_ratio = args.neg_sampling_ratio
 
     def preprocess(self):
         """
@@ -120,7 +154,6 @@ class WikiAlumniData:
             data = None
 
         data['x'] = data.x.type(torch.float32)
-        data['neg_sampling_ratio'] = self.neg_sampling_ratio
         data['num_classes'] = int(len(torch.unique(data.y)))
         data['num_relations'] = int(len(torch.unique(data.edge_type)))
 
@@ -141,15 +174,7 @@ class WikiAlumniData:
 
         # data = subgraph_by_edge_type(data, ["children", "parent"])
 
-        # this gives links without negative samples and keeps the edge type in edge_label
-        transform = RandomLinkSplit(is_undirected=False,
-                                    num_val=self.num_val,
-                                    num_test=self.num_test,
-                                    add_negative_train_samples=False,
-                                    neg_sampling_ratio=0.0)
-        train_data, val_data, test_data = transform(data)
+        transform = RandomLinkSplit(num_val=self.num_val, num_test=self.num_test)
+        data.train_data, data.val_data, data.test_data = transform(data)
 
-        data.train_data = train_data
-        data.val_data = val_data
-        data.test_data = test_data
         return data
