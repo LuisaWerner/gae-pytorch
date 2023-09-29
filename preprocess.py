@@ -3,9 +3,14 @@ import math
 from copy import copy
 from torch_geometric.utils import one_hot, negative_sampling
 # from torch_geometric.transforms import RandomLinkSplit
+from torch_geometric.data import Data
 
 
-def shuffle_edges(data):
+def shuffle_edges(data: Data) -> Data:
+    """
+    randomly shuffles the edge_index and edge_type of a data object
+    should be done before splitting into train/val/test or before splitting batches
+    """
     idx = torch.randperm(data.edge_index.shape[1])
     data['edge_index'] = data.edge_index[:, idx]
     data['edge_type'] = data.edge_type[idx]
@@ -16,7 +21,13 @@ def shuffle_edges(data):
     return data
 
 
-class RandomLinkSplit(object):
+class RandomLinkSplit(BaseTransform):
+    """
+    splits links into train, valid, test links
+    given num_val, num_test as float numbers
+    there is no overlap
+    """
+
     def __init__(self, num_val: float = 0.1, num_test: float = 0.1):
         assert num_val + num_test < 1.0
         self.num_val = num_val
@@ -54,11 +65,21 @@ class SubgraphSampler(object):
     """
     see https://pytorch-geometric.readthedocs.io/en/1.3.1/_modules/torch_geometric/data/sampler.html
     https: // pytorch - geometric.readthedocs.io / en / latest / _modules / torch_geometric / loader / dynamic_batch_sampler.html
-    Makes edges based on edge index. Equal length of edge index per batch
-    Problem: overlaps in nodes. Some nodes appear in multiple batches.
+    Samples batches based on edge index. Equal length of edge index per batch
+    Some nodes may appear in multiple batches but each link only appears once
     """
 
-    def __init__(self, data, batch_size=1000, shuffle=True, neg_sampling_ratio=1.0, neg_sampling_per_type=False, drop_last=True):
+    def __init__(self, data: Data, batch_size: int = 1000, shuffle: bool = True, neg_sampling_ratio: float = 1.0,
+                 neg_sampling_per_type: bool = False, drop_last: bool = True):
+        """
+        @param data: the data object from which batches will be sampled
+        @param batch_size: the number of links per batch
+        @param shuffle: shuffle edges before splitting in batches (should be done in training only)
+        @param neg_sampling_ratio: fraction of edge_index number of negative edges sampled
+        @param neg_sampling_per_type: if True, a link (a,r,b) is considered as false even though another link (a,r2,b)
+        between two nodes exists
+        @param drop_last: drops the last batch with an uneven number
+        """
         self.batch_size = batch_size
         self.num_neg_samples = math.floor(neg_sampling_ratio * data.edge_index.shape[1])
         self.data = data
@@ -66,7 +87,7 @@ class SubgraphSampler(object):
         self.e_id_start = 0
         self.num_batches = math.floor(data.num_edges / self.batch_size) if drop_last \
             else math.ceil(data.num_edges / self.batch_size)
-        self.neg_batch_size = math.floor(self.num_neg_samples/self.num_batches)
+        self.neg_batch_size = math.floor(self.num_neg_samples / self.num_batches)
 
         if shuffle:
             data = shuffle_edges(data)
@@ -91,6 +112,9 @@ class SubgraphSampler(object):
         return self.num_batches
 
     def __next__(self):
+        """
+        iteratively samples the next batch
+        """
         if self.current_index <= self.num_batches:
             batch = deepcopy(self.data)
             # take the first batch_size links

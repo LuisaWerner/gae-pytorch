@@ -11,25 +11,37 @@ from utils import compute_mrr
 from logger import *
 from preprocess import SubgraphSampler
 from sklearn.metrics import roc_auc_score
+from torch_geometric.data import Data
 
 
-def train(model, data, optimizer, device, args):
+def train(model: torch.nn.Module, data: Data, optimizer: torch.optim.Optimizer, device: int, args) -> float:
+    """
+    Conducts one epoch in training
+    @param model: prediction model
+    @param data: training data object
+    @param optimizer
+    @param device: cpu or gpu (number)
+    @param args: conf arguments
+    @returns: epoch loss
+    """
+
     model.train()
     optimizer.zero_grad()
 
-    # do negative sampling here and then sample per batch
-    train_loader = SubgraphSampler(data.train_data, shuffle=True, neg_sampling_per_type=False, neg_sampling_ratio=args.neg_sampling_ratio)
-    regularize = False  # todo
+    train_loader = SubgraphSampler(data.train_data,
+                                   shuffle=True,
+                                   neg_sampling_per_type=False,
+                                   neg_sampling_ratio=args.neg_sampling_ratio)
 
     total_loss = 0
     for i_batch, batch in enumerate(tqdm(train_loader)):
         batch.to(device)
         z = model.encode(batch)
-        out = model.decode(z, batch)  # pos and neg edges
+        out = model.decode(z, batch)
         loss = F.binary_cross_entropy_with_logits(out, batch.edge_label)
 
         if args.regularize:
-            reg_loss = z.pow(2).mean() + model.decoder.rel_emb.pow(2).mean()  # regularization # todo do we need this?
+            reg_loss = z.pow(2).mean() + model.decoder.rel_emb.pow(2).mean()
             loss = loss + 1e-2 * reg_loss
 
         total_loss += loss
@@ -37,13 +49,23 @@ def train(model, data, optimizer, device, args):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.)
         optimizer.step()
 
-    # todo we do not even need a return statement?
     return float(total_loss)
 
 
 @torch.no_grad()
-def test(model, data, device, args):
-    loader = SubgraphSampler(data, shuffle=False, neg_sampling_per_type=False, neg_sampling_ratio=args.neg_sampling_ratio)
+def test(model: torch.nn.Module, data: Data, device: int, args):
+    """
+    Conducts one epoch in training
+    @param model: prediction model
+    @param data: training data object
+    @param device: cpu or gpu (number)
+    @param args: conf arguments
+    @returns: evaluation metric, here: AUC
+    """
+    loader = SubgraphSampler(data,
+                             shuffle=False,
+                             neg_sampling_per_type=False,
+                             neg_sampling_ratio=args.neg_sampling_ratio)
     model.eval()
 
     outs = []
@@ -51,24 +73,21 @@ def test(model, data, device, args):
     for i_batch, batch in enumerate(tqdm(loader)):
         batch.to(device)
         z = model.encode(batch)
-        outs.append(model.decode(z, batch).sigmoid())  # todo is sigmoid correct  ?
+        outs.append(model.decode(z, batch).sigmoid())
         ground_truths.append(batch.edge_label)
 
     all_outs = torch.cat(outs, dim=0)
     all_ground_truth = torch.cat(ground_truths, dim=0)
     auc = roc_auc_score(all_ground_truth.cpu().numpy(), all_outs.cpu().numpy())
 
-    # todo which metric do we use?
-    # valid_mrr = compute_mrr(z, data.val_edge_index, data.val_edge_type, data, model)
-    # test_mrr = compute_mrr(z, data.test_edge_index, data.test_edge_type, data, model)
-    # return valid_mrr, test_mrr
+    # todo alternatively compute mrr/h@k?
     return auc
 
 
 def run_conf(args):
     """
-    helpful article on multi-label classification
-    https://www.kdnuggets.com/2023/03/multilabel-nlp-analysis-class-imbalance-loss-function-approaches.html#:~:text=In%20the%20context%20of%20using,loss%20as%20the%20loss%20function.
+    runs experiments defined in a conf file
+    (multiple runs)
     """
     torch_geometric.seed_everything(args.seed)
     if args.mps:
@@ -100,7 +119,7 @@ def run_conf(args):
             test_auc = test(model, data.test_data, device, args)
             print(f'Train AUC: {train_auc}, Val AUC: {val_auc}, Test AUC: {test_auc}')
 
-            # todo which metric to use
+            # todo mrr/H@k metrics?
             # valid_mrr, test_mrr = test(model, data)
             # print(f'Val MRR: {valid_mrr:.4f}, Test MRR: {test_mrr:.4f}')
             # run_logger.update_per_epoch(**args) # todo
