@@ -14,7 +14,7 @@ from sklearn.metrics import roc_auc_score
 from torch_geometric.data import Data
 
 
-def train(model: torch.nn.Module, data: Data, optimizer: torch.optim.Optimizer, device: int, args) -> float:
+def train(model: torch.nn.Module, data: Data, optimizer: torch.optim.Optimizer, device, args) -> float:
     """
     Conducts one epoch in training
     @param model: prediction model
@@ -53,7 +53,7 @@ def train(model: torch.nn.Module, data: Data, optimizer: torch.optim.Optimizer, 
 
 
 @torch.no_grad()
-def test(model: torch.nn.Module, data: Data, device: int, args):
+def test(model: torch.nn.Module, data: Data, device, args):
     """
     Conducts one epoch in training
     @param model: prediction model
