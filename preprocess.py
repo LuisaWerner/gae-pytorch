@@ -149,7 +149,10 @@ class SubgraphSampler(object):
 
 def get_data(args):
     """ returns data object """
-    data = WikiAlumniData(args).preprocess()
+    if args.data == 'WikiAlumni':
+        data = WikiAlumniData(args).preprocess()
+    elif args.data == 'Family':
+        data = FamilyData(args).preprocess()
     return data
 
 
@@ -186,7 +189,7 @@ class WikiAlumniData:
         del data['test_ent_idx']
 
         # create initial dictionary for edges
-        data = add_edge_type_dict(data)
+        data = add_edge_type_dict_wiki(data)
 
         # create heterodata object
         if self.to_hetero:
@@ -202,3 +205,46 @@ class WikiAlumniData:
         data.train_data, data.val_data, data.test_data = transform(data)
 
         return data
+
+
+class FamilyData:
+    def __init__(self, args):
+        self.path = "./family"
+
+    def preprocess(self):
+        """
+        loads the data object
+        x are the node features, y the node labels, edge_index the message passing edges,
+        edge_type the type of the relation
+        after the random link split edge_label_index are the supervision edges and edge_label are the types
+        train.edge_label_index + valid.edge_label_index + test.edge_label_index sum up to total edges in data.
+        clarification on random link split: https: // github.com / pyg - team / pytorch_geometric / issues / 3668
+        """
+        try:
+            all_triples = open(self.path + '/all.txt').readlines()
+
+        except (FileNotFoundError, IOError):
+            print(f"File in {self.path} not found. Put the pickle file in directory")
+            all_triples = None
+
+        edge_index, edge_type = [], []
+
+        for line in all_triples:
+            head, relation, tail = line.split('\t')
+            if tail.endswith('\n'):
+                tail = tail[:-1]
+            edge_index.append([int(head), int(tail)])
+            edge_type.append(relation)
+
+        edge_index = torch.tensor(edge_index).t().contiguous()
+        edge_type_dict = dict(zip(set(edge_type), range(len(set(edge_type)))))
+        edge_type = torch.tensor([int(edge_type_dict.get(x)) for x in edge_type])
+
+        data = Data()
+        data['edge_index'] = edge_index
+        data['edge_type'] = edge_type
+        data._edge_type_dict = edge_type_dict
+
+        return data
+
+

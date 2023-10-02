@@ -64,7 +64,7 @@ def compute_mrr(z, edge_index, edge_type, data, model):
     return (1. / torch.tensor(ranks, dtype=torch.float)).mean()
 
 
-def add_edge_type_dict(data):
+def add_edge_type_dict_wiki(data):
     """ adds attribute edge type dict """
     edge_types_str = ['about', 'actor', 'affiliation', 'author', 'award', 'birthplace',
                       'character', 'children', 'competitor', 'composer', 'contributor',
