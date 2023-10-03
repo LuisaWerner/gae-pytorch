@@ -5,6 +5,7 @@ from torch_geometric.transforms import BaseTransform, RandomLinkSplit
 from torch_geometric.utils import remove_isolated_nodes
 from copy import deepcopy
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 
 @torch.no_grad()
@@ -92,6 +93,22 @@ def subgraph_by_edge_type(data, edge_list: [str], keep_all_nodes=False):
         data.x = data.x[node_mask]
         data.y = data.y[node_mask]
     return data
+
+
+def count_frequencies(data: list) -> None:
+    """
+    counts the absolute frequency and makes a histogram
+    eg. for the frequency of classes in data
+    """
+    counted_data = {}
+    for v in sorted(set(data)):
+        counted_data[v] = data.count(v)
+        print(f'{v}, {data.count(v)}')
+
+    val, weight = zip(*[(k, v) for k, v in counted_data.items()])
+    plt.hist(val, weights=weight, rwidth=0.5)
+    plt.title('Relation Frequency, all.txt')
+    plt.savefig('./plots/freq_family_classes.pdf', format='pdf')
 
 
 def add_edge_common(data, edge_list, path=Path.cwd() / 'Wikialumni' / 'augmented.pkl'):

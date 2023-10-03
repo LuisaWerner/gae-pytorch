@@ -1,3 +1,4 @@
+import utils
 from utils import *
 import math
 from copy import copy
@@ -211,25 +212,20 @@ class FamilyData:
     def __init__(self, args):
         self.path = "./family"
 
-    def preprocess(self):
+    def triples_to_data(self, key='all') -> Data:
         """
-        loads the data object
-        x are the node features, y the node labels, edge_index the message passing edges,
-        edge_type the type of the relation
-        after the random link split edge_label_index are the supervision edges and edge_label are the types
-        train.edge_label_index + valid.edge_label_index + test.edge_label_index sum up to total edges in data.
-        clarification on random link split: https: // github.com / pyg - team / pytorch_geometric / issues / 3668
+        loads triples files in txt and creates a PyG Data object with attributes
+        edge_type and edge_index
         """
         try:
-            all_triples = open(self.path + '/all.txt').readlines()
+            triples = open(self.path + '/' + key + '.txt').readlines()
 
         except (FileNotFoundError, IOError):
-            print(f"File in {self.path} not found. Put the pickle file in directory")
-            all_triples = None
+            print(f"File {key}.txt in {self.path} not found. Put the pickle file in directory")
+            triples = None
 
         edge_index, edge_type = [], []
-
-        for line in all_triples:
+        for line in triples:
             head, relation, tail = line.split('\t')
             if tail.endswith('\n'):
                 tail = tail[:-1]
@@ -244,6 +240,25 @@ class FamilyData:
         data['edge_index'] = edge_index
         data['edge_type'] = edge_type
         data._edge_type_dict = edge_type_dict
+        return data
+
+    def preprocess(self):
+        """
+        loads the data object
+        x are the node features, y the node labels, edge_index the message passing edges,
+        edge_type the type of the relation
+        after the random link split edge_label_index are the supervision edges and edge_label are the types
+        train.edge_label_index + valid.edge_label_index + test.edge_label_index sum up to total edges in data.
+        clarification on random link split: https: // github.com / pyg - team / pytorch_geometric / issues / 3668
+        """
+
+        data = self.triples_to_data()
+
+        # todo we might do our own split
+        # todo how is this split done?
+        data['train'] = self.triples_to_data('train')
+        data['valid'] = self.triples_to_data('valid')
+        data['test'] = self.triples_to_data('test')
 
         return data
 
