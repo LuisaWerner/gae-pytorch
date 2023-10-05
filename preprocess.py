@@ -138,6 +138,7 @@ class SubgraphSampler(object):
 
             batch['edge_label'] = one_hot(batch.edge_type, num_classes=batch.num_relations + 1)
             batch['num_nodes'] = sum(mask)
+            batch['node_ids'] = torch.nonzero(mask).squeeze()  # to select later the right rows from node embeddings
 
             if self.data.x is not None:
                 batch['x'] = batch.x[mask, :]
@@ -246,10 +247,12 @@ class FamilyData:
         data['edge_index'] = edge_index
         data['edge_type'] = edge_type
         data['num_relations'] = len(torch.unique(edge_type))
+        data['num_nodes'] = max(torch.reshape(data.edge_index, [-1])) + 1  # highest node id and + 1 because of 0
         data._edge_type_dict = edge_type_dict
 
         # doesnt have node features, node labels, and node classes
         # data['x'], data['y'], data['num_classes'] = None, None, None
+
         return data
 
     def preprocess(self):
@@ -264,7 +267,7 @@ class FamilyData:
 
         data = self.triples_to_data()
 
-        # todo we might do our own split
+        # todo we might do our own split, also check that num_nodes is correct
         # todo how is this split done?
         data['train'] = self.triples_to_data('train')
         data['valid'] = self.triples_to_data('valid')

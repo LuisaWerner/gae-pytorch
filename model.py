@@ -88,8 +88,11 @@ class RGCNEncoder(torch.nn.Module):
 
 
 class MLPEncoder(torch.nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, data):
         super().__init__()
+        if data.x is None:
+            self.featureless = True
+            self.node_embeddings = Parameter(torch.empty(data.num_nodes, args.hidden_dim))
         self.dropout = args.dropout
         self.linear1 = Linear(-1, args.hidden_dim)
         self.linear2 = Linear(args.hidden_dim, args.hidden_dim)
@@ -103,7 +106,10 @@ class MLPEncoder(torch.nn.Module):
         self.linear3.reset_parameters()
 
     def forward(self, batch):
-        z = self.linear1(batch.x).relu_()
+        if self.featureless:
+            z = self.linear1(self.node_embeddings[batch.node_ids]).relu_()
+        else:
+            z = self.linear1(batch.x).relu_()
         z = F.dropout(z, p=self.dropout, training=self.training)  # todo dropout rate as argument
         z = self.linear2(z).relu_()
         z = F.dropout(z, p=self.dropout, training=self.training)
