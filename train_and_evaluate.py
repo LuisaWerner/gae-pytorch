@@ -28,7 +28,7 @@ def train(model: torch.nn.Module, data: Data, optimizer: torch.optim.Optimizer, 
     model.train()
     optimizer.zero_grad()
 
-    train_loader = SubgraphSampler(data.train_data,
+    train_loader = SubgraphSampler(data.train,
                                    shuffle=True,
                                    neg_sampling_per_type=False,
                                    neg_sampling_ratio=args.neg_sampling_ratio)
@@ -114,9 +114,9 @@ def run_conf(args):
             print(f'Run {run}, Epoch {epoch}')
             loss = train(model, data, optimizer, device, args)
             print(f'Loss: {loss:.4f}')
-            train_auc = test(model, data.train_data, device, args)
-            val_auc = test(model, data.val_data, device, args)
-            test_auc = test(model, data.test_data, device, args)
+            train_auc = test(model, data.train, device, args)
+            val_auc = test(model, data.valid, device, args)
+            test_auc = test(model, data.test, device, args)
             print(f'Train AUC: {train_auc}, Val AUC: {val_auc}, Test AUC: {test_auc}')
 
             # todo mrr/H@k metrics?

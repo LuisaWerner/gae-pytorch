@@ -154,6 +154,9 @@ def get_data(args):
         data = WikiAlumniData(args).preprocess()
     elif args.data == 'Family':
         data = FamilyData(args).preprocess()
+    else:
+        AttributeError(f'Wrong argument {args.data}. Does not exist in list of allowed datasets')
+        data=None
     return data
 
 
@@ -203,7 +206,7 @@ class WikiAlumniData:
         # data = subgraph_by_edge_type(data, ["children", "parent"])
 
         transform = RandomLinkSplit(num_val=self.num_val, num_test=self.num_test)
-        data.train_data, data.val_data, data.test_data = transform(data)
+        data.train, data.valid, data.test = transform(data)
 
         return data
 
