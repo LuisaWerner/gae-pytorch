@@ -137,10 +137,13 @@ class SubgraphSampler(object):
             batch['neg_edge_index'] = edge_index[:, self.batch_size:]
 
             batch['edge_label'] = one_hot(batch.edge_type, num_classes=batch.num_relations + 1)
-            batch['x'] = batch.x[mask, :]
-            batch['y'] = batch.y[mask]
             batch['num_nodes'] = sum(mask)
-            batch['num_classes'] = self.data.num_classes
+
+            if self.data.x is not None:
+                batch['x'] = batch.x[mask, :]
+            if self.data.y is not None:
+                batch['y'] = batch.y[mask]
+                batch['num_classes'] = self.data.num_classes
 
             self.current_index += 1
             self.e_id_start += self.batch_size
@@ -242,7 +245,11 @@ class FamilyData:
         data = Data()
         data['edge_index'] = edge_index
         data['edge_type'] = edge_type
+        data['num_relations'] = len(torch.unique(edge_type))
         data._edge_type_dict = edge_type_dict
+
+        # doesnt have node features, node labels, and node classes
+        # data['x'], data['y'], data['num_classes'] = None, None, None
         return data
 
     def preprocess(self):
