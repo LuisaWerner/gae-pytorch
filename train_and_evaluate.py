@@ -7,7 +7,7 @@ from model import *
 from preprocess import get_data
 from torch_geometric.nn import GAE
 from torch_geometric.utils import negative_sampling
-from utils import compute_mrr
+from utils import *
 from logger import *
 from preprocess import SubgraphSampler
 from sklearn.metrics import roc_auc_score
@@ -83,7 +83,9 @@ def test(model: torch.nn.Module, data: Data, device, args):
 
     all_outs = torch.cat(outs, dim=0)
     all_ground_truth = torch.cat(ground_truths, dim=0)
+
     auc = roc_auc_score(all_ground_truth.cpu().numpy(), all_outs.cpu().numpy())
+    metrics = Evaluator(all_ground_truth, all_outs, model, data).compute_rank()
 
     # todo alternatively compute mrr/h@k?
     return auc

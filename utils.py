@@ -2,10 +2,111 @@ from tqdm import tqdm
 import pickle
 import torch
 from torch_geometric.transforms import BaseTransform, RandomLinkSplit
-from torch_geometric.utils import remove_isolated_nodes
+from torch_geometric.utils import remove_isolated_nodes, negative_sampling
 from copy import deepcopy
 from pathlib import Path
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score
+from torch_geometric.data import Data
+import random
+from torch_geometric.data import Data
+import torch.nn.functional as F
+
+
+
+class NegativeSampler:
+    def __init__(self, data, n_corrupted):
+        self.edge_index = data.edge_index
+        self.edge_type = data.edge_type
+        self.triples = torch.vstack([self.edge_index[0, :], self.edge_type, self.edge_index[1,:]])
+        self.n_corrupted = n_corrupted
+
+    def get_corrupted_triples(self, triple):
+        head, rel, tail = triple
+
+        nodes = torch.unique(self.edge_index.reshape([-1]))
+        rels = torch.unique(self.edge_type)
+
+        # randomly sample nodes
+        sampled_heads = torch.randperm(len(nodes))[:self.n_corrupted]
+        sampled_tails = torch.randperm(len(nodes))[:self.n_corrupted]
+        sampled_rels = torch.Tensor([random.choice(list(rels)) for i in range(self.n_corrupted)])
+
+        cor_head = torch.vstack([sampled_heads, torch.ones_like(sampled_heads) * rel, torch.ones_like(sampled_heads) * tail])
+        cor_tail = torch.vstack([torch.ones_like(sampled_heads) * head, torch.ones_like(sampled_heads) * rel, sampled_tails])
+        cor_rel = torch.vstack([torch.ones_like(sampled_heads) * head, sampled_rels.int(), torch.ones_like(sampled_heads) * tail])
+
+        neg_samples = torch.hstack([cor_head, cor_tail, cor_rel])
+        # todo filter false negatives
+        mask = torch.ones_like(neg_samples[0], dtype=torch.bool)
+        return neg_samples
+
+
+class Evaluator:
+    def __init__(self, ground_truth: torch.Tensor, out: torch.Tensor, model, data: Data, num_neg_samples: int = 100):
+        self.ground_truth = ground_truth
+        self.out = out
+        self.model = model
+        self.data = data
+        self.num_neg_samples = num_neg_samples
+
+    def roc_auc_score(self):
+        return roc_auc_score(self.ground_truth.cpu().numpy(), self.out.cpu().numpy())
+
+
+    @torch.no_grad()
+    def compute_rank(self):
+        """ for each triple, flip head and tail and do n negative samples and see how it ranks """
+        edge_index, edge_type = self.data.edge_index, self.data.edge_type
+
+        triples = torch.vstack([edge_index[0, :], edge_type, edge_index[1,:]])
+        sampler = NegativeSampler(self.data, 10)
+
+        for i in range(edge_index.numel()):
+            ranks = []
+            (head, tail), rel = edge_index[:, i], edge_type[i]
+            neg_triples = sampler.get_corrupted_triples((head, rel, tail))
+            true_triple = torch.vstack([head, rel, tail])
+            all_triples = torch.hstack([true_triple, neg_triples]) # the first triple is the true triple
+
+             # todo node ids don't correspond
+            eval_batch = Data()
+            edge_index = torch.vstack([all_triples[0, :], all_triples[2, :]])
+            edge_type = all_triples[1, :]
+
+            edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=self.data.num_nodes)
+            eval_batch['edge_index'] = eval_batch['pos_edge_index'] = edge_index
+            eval_batch['edge_type'] = edge_type
+            # node ids have to correspond 
+            eval_batch['node_ids'] = torch.unique(eval_batch.edge_index).reshape([-1])
+
+            z = F.sigmoid(self.model.decode(self.model.encode(eval_batch), eval_batch))
+
+
+
+            # now rank the scores
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @torch.no_grad()
@@ -26,10 +127,7 @@ def compute_mrr(z, edge_index, edge_type, data, model):
 
         # Try all nodes as tails, but delete true triplets:
         tail_mask = torch.ones(data.num_nodes, dtype=torch.bool)
-        for (heads, tails), types in [
-            (data.train_edge_index, data.train_edge_type),
-            (data.val_edge_index, data.val_edge_type),
-            (data.test_edge_index, data.test_edge_type),
+        for (heads, tails), types in [(data.edge_index, data.edge_type)
         ]:
             tail_mask[tails[(heads == src) & (types == rel)]] = False
 
