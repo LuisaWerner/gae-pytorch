@@ -3,7 +3,7 @@ import torch
 from tqdm import tqdm
 import torch_geometric
 import torch.backends.mps
-from model import get_model, RGCNEncoder, DistMultDecoder, HetDistMultDecoder, MLPEncoder
+from model import *
 from preprocess import get_data
 from torch_geometric.nn import GAE
 from torch_geometric.utils import negative_sampling
@@ -29,16 +29,19 @@ def train(model: torch.nn.Module, data: Data, optimizer: torch.optim.Optimizer, 
     optimizer.zero_grad()
 
     train_loader = SubgraphSampler(data.train,
+                                   batch_size=args.batch_size,
                                    shuffle=True,
                                    neg_sampling_per_type=False,
                                    neg_sampling_ratio=args.neg_sampling_ratio)
 
     total_loss = 0
-    for i_batch, batch in enumerate(tqdm(train_loader)):
+    # for i_batch, batch in enumerate(tqdm(train_loader)):
+    for i_batch, batch in enumerate(train_loader):
         batch.to(device)
         z = model.encode(batch)
-        out = model.decode(z, batch)
-        loss = F.binary_cross_entropy_with_logits(out, batch.edge_label)
+        out = F.sigmoid(model.decode(z, batch))
+        # todo we could also use BCE_with_logits and remove activation function in output layer
+        loss = F.binary_cross_entropy(out, batch.edge_label)
 
         if args.regularize:
             reg_loss = z.pow(2).mean() + model.decoder.rel_emb.pow(2).mean()
@@ -63,6 +66,7 @@ def test(model: torch.nn.Module, data: Data, device, args):
     @returns: evaluation metric, here: AUC
     """
     loader = SubgraphSampler(data,
+                             batch_size=args.batch_size,
                              shuffle=False,
                              neg_sampling_per_type=False,
                              neg_sampling_ratio=args.neg_sampling_ratio)
@@ -70,7 +74,8 @@ def test(model: torch.nn.Module, data: Data, device, args):
 
     outs = []
     ground_truths = []
-    for i_batch, batch in enumerate(tqdm(loader)):
+    for i_batch, batch in enumerate(loader):
+    # for i_batch, batch in enumerate(tqdm(loader)):
         batch.to(device)
         z = model.encode(batch)
         outs.append(model.decode(z, batch).sigmoid())
@@ -102,8 +107,8 @@ def run_conf(args):
     for run in range(args.runs):
         data = get_data(args).to(device)
         model = GAE(
-            encoder=MLPEncoder(args, data),
-            decoder=HetDistMultDecoder(num_relations=data.num_relations, hidden_channels=args.hidden_dim),
+            encoder=LinearEncoder(args, data),
+            decoder=HetDistMultDecoder(args, data),
         ).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate,
                                      betas=(args.adam_beta1, args.adam_beta2),

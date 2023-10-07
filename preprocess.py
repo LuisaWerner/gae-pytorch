@@ -81,14 +81,19 @@ class SubgraphSampler(object):
         between two nodes exists
         @param drop_last: drops the last batch with an uneven number
         """
-        self.batch_size = batch_size
+        if batch_size > data.edge_index.shape[1]:
+            self.batch_size = data.edge_index.shape[1]
+            self.num_batches = 1
+        else:
+            self.batch_size = batch_size
+            self.num_batches = math.floor(data.num_edges / self.batch_size) if drop_last \
+                else math.ceil(data.num_edges / self.batch_size)
+
         self.num_neg_samples = math.floor(neg_sampling_ratio * data.edge_index.shape[1])
+        self.neg_batch_size = math.floor(self.num_neg_samples / self.num_batches)
         self.data = data
         self.current_index = 0
         self.e_id_start = 0
-        self.num_batches = math.floor(data.num_edges / self.batch_size) if drop_last \
-            else math.ceil(data.num_edges / self.batch_size)
-        self.neg_batch_size = math.floor(self.num_neg_samples / self.num_batches)
 
         if shuffle:
             data = shuffle_edges(data)
@@ -116,7 +121,7 @@ class SubgraphSampler(object):
         """
         iteratively samples the next batch
         """
-        if self.current_index <= self.num_batches:
+        if self.current_index < self.num_batches:
             batch = deepcopy(self.data)
             # take the first batch_size links
             edge_index = self.data.edge_index[:, self.e_id_start:self.e_id_start + self.batch_size]
