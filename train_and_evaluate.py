@@ -109,7 +109,7 @@ def run_conf(args):
     for run in range(args.runs):
         data = get_data(args).to(device)
         model = GAE(
-            encoder=LinearEncoder(args, data),
+            encoder=RelationalEncoder(args, data),
             decoder=HetDistMultDecoder(args, data),
         ).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate,
