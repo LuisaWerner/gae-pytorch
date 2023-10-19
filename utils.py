@@ -15,7 +15,11 @@ import torch.nn.functional as F
 
 
 class NegativeSampler:
-    def __init__(self, data, n_corrupted):
+    """
+    Samples corrupted triples for a given triple. For corrupting head, tail and rel, n_corrupted
+    triples are created. Todo: So far not checking if the triple is true in another dataset split
+    """
+    def __init__(self, data, n_corrupted, relation_based_sampling=False):
         self.edge_index = data.edge_index
         self.edge_type = data.edge_type
         self.triples = torch.vstack([self.edge_index[0, :], self.edge_type, self.edge_index[1,:]])
@@ -30,13 +34,14 @@ class NegativeSampler:
         # randomly sample nodes
         sampled_heads = torch.randperm(len(nodes))[:self.n_corrupted]
         sampled_tails = torch.randperm(len(nodes))[:self.n_corrupted]
-        sampled_rels = torch.Tensor([random.choice(list(rels)) for i in range(self.n_corrupted)])
+        # sampled_rels = torch.Tensor([random.choice(list(rels)) for i in range(self.n_corrupted)])
 
         cor_head = torch.vstack([sampled_heads, torch.ones_like(sampled_heads) * rel, torch.ones_like(sampled_heads) * tail])
         cor_tail = torch.vstack([torch.ones_like(sampled_heads) * head, torch.ones_like(sampled_heads) * rel, sampled_tails])
-        cor_rel = torch.vstack([torch.ones_like(sampled_heads) * head, sampled_rels.int(), torch.ones_like(sampled_heads) * tail])
+        # cor_rel = torch.vstack([torch.ones_like(sampled_heads) * head, sampled_rels.int(), torch.ones_like(sampled_heads) * tail])
 
-        neg_samples = torch.hstack([cor_head, cor_tail, cor_rel])
+        # neg_samples = torch.hstack([cor_head, cor_tail, cor_rel])
+        neg_samples = torch.hstack([cor_head, cor_tail])
         # todo filter false negatives
         mask = torch.ones_like(neg_samples[0], dtype=torch.bool)
         return neg_samples
@@ -59,8 +64,8 @@ class Evaluator:
         """ for each triple, flip head and tail and do n negative samples and see how it ranks """
         edge_index, edge_type = self.data.edge_index, self.data.edge_type
 
-        triples = torch.vstack([edge_index[0, :], edge_type, edge_index[1,:]])
-        sampler = NegativeSampler(self.data, 10)
+        # triples = torch.vstack([edge_index[0, :], edge_type, edge_index[1,:]])
+        sampler = NegativeSampler(self.data, 100)
 
         for i in range(edge_index.numel()):
             ranks = []
@@ -69,7 +74,7 @@ class Evaluator:
             true_triple = torch.vstack([head, rel, tail])
             all_triples = torch.hstack([true_triple, neg_triples]) # the first triple is the true triple
 
-             # todo node ids don't correspond
+            # todo node ids don't correspond
             eval_batch = Data()
             edge_index = torch.vstack([all_triples[0, :], all_triples[2, :]])
             edge_type = all_triples[1, :]
@@ -77,37 +82,13 @@ class Evaluator:
             edge_index, edge_type, mask = remove_isolated_nodes(edge_index, edge_type, num_nodes=self.data.num_nodes)
             eval_batch['edge_index'] = eval_batch['pos_edge_index'] = edge_index
             eval_batch['edge_type'] = edge_type
-            # node ids have to correspond 
-            eval_batch['node_ids'] = torch.unique(eval_batch.edge_index).reshape([-1])
-
-            z = F.sigmoid(self.model.decode(self.model.encode(eval_batch), eval_batch))
-
-
-
-            # now rank the scores
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            eval_batch['node_ids'] = torch.nonzero(mask).squeeze()
+            # eval_batch['node_ids'] = torch.unique(eval_batch.edge_index).reshape([-1])
+            z = self.model.encode(eval_batch)
+            # todo why is it always zero here?
+            scores = F.sigmoid(self.model.decode(z, eval_batch))
+            print('test')
+            # todo: values are to high, sigmoid is not discriminative
 
 @torch.no_grad()
 def compute_rank(ranks):

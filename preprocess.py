@@ -1,8 +1,10 @@
+import torch_geometric.utils
+
 import utils
 from utils import *
 import math
 from copy import copy
-from torch_geometric.utils import one_hot, negative_sampling
+from torch_geometric.utils import one_hot, negative_sampling, contains_isolated_nodes, degree
 # from torch_geometric.transforms import RandomLinkSplit
 from torch_geometric.data import Data
 
@@ -257,6 +259,10 @@ class FamilyData:
 
         # doesnt have node features, node labels, and node classes
         # data['x'], data['y'], data['num_classes'] = None, None, None
+
+        # num_isolated_nodes = -sum(remove_isolated_nodes(data.edge_index)[2] + (-1))
+        # dgr = degree(data.edge_index[0], data.num_nodes)
+        # avg_dgr, max_dgr, med_dgr = torch.mean(dgr), torch.max(dgr), torch.median(dgr)
 
         return data
 
